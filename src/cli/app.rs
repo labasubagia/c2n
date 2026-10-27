@@ -275,8 +275,6 @@ async fn run_accounts(args: RunArgs, reporter: &Reporter) -> Result<()> {
         let resolved = config.account(account_name)?;
 
         let db_id = resolved.notion_database_id.clone();
-        validate_db_id(&db_id)?;
-
         let conversation_delay = args
             .conversation_delay
             .or(resolved.conversation_delay)
@@ -459,12 +457,6 @@ fn validate_sync_args(args: &SyncArgs) -> Result<()> {
     }
     Ok(())
 }
-fn validate_db_id(db_id: &str) -> Result<()> {
-    if db_id.trim().len() < 10 {
-        bail!("Notion database ID must be a valid ID");
-    }
-    Ok(())
-}
 
 fn print_account_header(
     reporter: &Reporter,
@@ -590,11 +582,5 @@ mod tests {
         args.all = true;
         args.from_history = true;
         assert!(validate_sync_args(&args).is_ok());
-    }
-
-    #[test]
-    fn rejects_short_database_ids() {
-        assert!(validate_db_id("short").is_err());
-        assert!(validate_db_id("0123456789abcdef").is_ok());
     }
 }

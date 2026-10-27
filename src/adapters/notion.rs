@@ -23,12 +23,6 @@ pub enum NotionError {
     Request(#[from] reqwest::Error),
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("invalid HTTP header {name}: {source}")]
-    InvalidHeader {
-        name: String,
-        #[source]
-        source: reqwest::header::InvalidHeaderValue,
-    },
     #[error("file not found: {0}")]
     FileNotFound(String),
     #[error("Notion file upload response is missing an id")]

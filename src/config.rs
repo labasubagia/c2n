@@ -75,13 +75,14 @@ impl Config {
         let invalid: Vec<String> = app
             .accounts
             .keys()
-            .filter(|name| !EmailAddress::is_valid(name))
-            .map(|name| format!("{name:?}"))
+            .filter_map(|name| match name.parse::<EmailAddress>() {
+                Ok(_) => None,
+                Err(e) => Some(format!("{name:?} ({e})")),
+            })
             .collect();
         if !invalid.is_empty() {
             return Err(ConfigError::InvalidAccountKeys(invalid.join(", ")));
         }
-
         let accounts = app
             .accounts
             .iter()

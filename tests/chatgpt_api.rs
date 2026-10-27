@@ -8,7 +8,7 @@ use wiremock::matchers::{method, path, query_param, query_param_is_missing};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use c2n::adapters::chatgpt::{ChatGptApi, ChatGptClient, DeleteConversationResult};
-use c2n::domain::models::{NotionConfig, ProviderContext};
+use c2n::domain::models::ProviderContext;
 use c2n::shared::verbosity::{Reporter, Verbosity};
 
 const ACCOUNT: &str = "user@example.com";
@@ -19,7 +19,6 @@ fn context() -> ProviderContext {
     headers.insert(USER_AGENT, HeaderValue::from_static("agent"));
     ProviderContext {
         headers,
-        notion: NotionConfig::default(),
         account_name: ACCOUNT.to_owned(),
     }
 }

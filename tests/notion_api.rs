@@ -25,7 +25,6 @@ fn context() -> NotionContext {
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     NotionContext {
         headers,
-        database_id: Some(DB_ID.to_owned()),
         account_name: "user@example.com".to_owned(),
     }
 }

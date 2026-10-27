@@ -49,8 +49,6 @@ pub enum SyncError {
     Fs(#[from] FsError),
     #[error(transparent)]
     History(#[from] HistoryError),
-    #[error("database id must not be empty")]
-    MissingDatabaseId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,10 +129,6 @@ async fn run(
     notion: &dyn NotionApi,
     reporter: &Reporter,
 ) -> Result<(), SyncError> {
-    if options.db_id.trim().is_empty() {
-        return Err(SyncError::MissingDatabaseId);
-    }
-
     let resolved = config.account(&options.account)?;
     store.init_db()?;
 

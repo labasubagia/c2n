@@ -60,7 +60,7 @@ secure intermediary between ChatGPT generation history and a Notion database.
 src/
 ├── adapters/
 │   ├── chatgpt.rs      # ChatGptApi trait + reqwest implementation
-│   ├── filesystem.rs   # output root, path resolution, cleaning
+│   ├── filesystem.rs   # data dir, path resolution, cleaning
 │   ├── notion.rs       # NotionApi trait + upload/page implementation
 │   └── sqlite.rs       # GenerationStore/NotionCache + rusqlite implementation
 ├── cli/app.rs          # clap definitions and handlers
@@ -381,15 +381,13 @@ is marked ready, matching the original tool's behavior.
 
 ### 5.4 Path Safety
 
-- The output root is the platform data dir (`$C2N_DATA_DIR` overrides it).
-- Configured (TOML) image folders are resolved under the output root when
-  relative; absolute configured paths are used as-is.
-- `..` components that would escape the output root are rejected.
-- Symlinks inside the output root are resolved and rejected if they escape it,
+- The data dir is the platform data dir (`$C2N_DATA_DIR` overrides it).
+- Images are written to `<data_dir>/images`.
+- `..` components that would escape the data dir are rejected.
+- Symlinks inside the data dir are resolved and rejected if they escape it,
   including dangling symlinks whose target does not exist yet.
 - Downloaded filenames sanitize API-provided IDs so they cannot contain path
   separators.
-- `~` is expanded for configured paths.
 
 ### 5.5 Testing Strategy
 

@@ -167,7 +167,7 @@ struct TestContext {
 fn test_context() -> TestContext {
     let temp = tempfile::tempdir().unwrap();
     let output = temp.path().join("output");
-    let filesystem = Filesystem::with_output_root(&output);
+    let filesystem = Filesystem::with_data_dir(&output);
     let store = Arc::new(SqliteStore::open(filesystem.db_path()).unwrap());
     store.init_db().unwrap();
 

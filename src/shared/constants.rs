@@ -46,6 +46,14 @@ pub fn config_path() -> PathBuf {
     config_dir().join(CONFIG_FILE_NAME)
 }
 
+/// Create the config, data, and default image directories if they are absent.
+pub fn ensure_dirs() -> std::io::Result<()> {
+    std::fs::create_dir_all(config_dir())?;
+    std::fs::create_dir_all(data_dir())?;
+    std::fs::create_dir_all(data_dir().join("images"))?;
+    Ok(())
+}
+
 const IMAGE_EXTENSIONS: &[&str] = &[".png", ".jpg", ".jpeg", ".gif", ".webp"];
 
 /// Return the image extension from a URL, defaulting to `.png`.

@@ -168,6 +168,7 @@ pub struct DeleteLibraryArgs {
 pub async fn run(cli: Cli) -> Result<()> {
     let Cli { command } = cli;
     init_tracing(verbosity_for(&command));
+    crate::shared::constants::ensure_dirs()?;
 
     match command {
         Command::Sync(args) => run_sync(args).await,

@@ -11,12 +11,12 @@ use tracing_subscriber::EnvFilter;
 
 use crate::adapters::chatgpt::{ChatGptApi, ChatGptClient};
 use crate::adapters::filesystem::Filesystem;
-use crate::adapters::notion::{NotionApi, NotionClient};
+use crate::adapters::notion::NotionClient;
 use crate::adapters::sqlite::{GenerationStore, SqliteStore};
 use crate::config::Config;
 use crate::domain::models::RequiredVar;
 use crate::services::account_status::{ActivityRow, get_account_activity_statuses};
-use crate::services::upload::{UploadOptions, upload_to_notion_sequential};
+use crate::services::sync::{SyncOptions, sync};
 use crate::shared::constants::DEFAULT_CONFIG_PATH;
 use crate::shared::time::resolve_timezone;
 use crate::shared::verbosity::{Reporter, Verbosity};
@@ -43,9 +43,9 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Upload image generations to Notion.
-    #[command(name = "upload-to-notion")]
-    UploadToNotion(UploadArgs),
+    /// Sync image generations to Notion.
+    #[command(name = "sync")]
+    Sync(SyncArgs),
 
     /// Show which accounts are ready to generate new data.
     #[command(name = "account-status")]
@@ -75,7 +75,7 @@ pub enum Command {
 }
 
 #[derive(Debug, Args)]
-pub struct UploadArgs {
+pub struct SyncArgs {
     /// Path to a history folder (accepted for compatibility; SQLite is the source of truth).
     #[arg(long)]
     pub history_folder: Option<String>,
@@ -87,14 +87,6 @@ pub struct UploadArgs {
     /// Notion database ID (overrides the configured database).
     #[arg(long)]
     pub db_id: Option<String>,
-
-    /// Upload images to Notion (default; accepted for CLI compatibility).
-    #[arg(long, conflicts_with = "no_upload_to_notion")]
-    pub upload_to_notion: bool,
-
-    /// Download images and embed prompts without uploading them to Notion.
-    #[arg(long = "no-upload-to-notion")]
-    pub no_upload_to_notion: bool,
 
     /// Hide conversations in ChatGPT after all their images are verified uploaded.
     #[arg(long)]
@@ -196,7 +188,7 @@ pub async fn run(cli: Cli) -> Result<()> {
     init_tracing(verbosity_for(&command));
 
     match command {
-        Command::UploadToNotion(args) => run_upload(&config, args).await,
+        Command::Sync(args) => run_sync(&config, args).await,
         Command::AccountStatus(args) => run_account_status(&config, args),
         Command::CleanOutputPath => run_clean_output(),
         Command::BackupDb { target } => run_backup(&target),
@@ -205,37 +197,82 @@ pub async fn run(cli: Cli) -> Result<()> {
     }
 }
 
-async fn run_upload(config_path: &Path, args: UploadArgs) -> Result<()> {
-    validate_upload_args(&args)?;
+#[derive(Debug)]
+struct RunArgs {
+    db_id: Option<String>,
+    image_folder: Option<String>,
+    delete_conversation: bool,
+    delete_library: bool,
+    delete_library_all: bool,
+    confirm_delete_library: bool,
+    check_notion_api: bool,
+    from_history: bool,
+    include_uploaded: bool,
+    keep_days: Option<i64>,
+    no_cache: bool,
+    limit: usize,
+    conversation_delay: Option<f64>,
+    account: Option<String>,
+}
 
-    let config = Config::load(Some(config_path))?;
-    let filesystem = Filesystem::new();
-    let store = Arc::new(SqliteStore::open(filesystem.db_path())?);
-    store.init_db()?;
+async fn run_sync(config_path: &Path, args: SyncArgs) -> Result<()> {
+    validate_sync_args(&args)?;
 
-    let verbosity = if args.quiet {
-        Verbosity::Quiet
-    } else if args.verbose {
-        Verbosity::Verbose
-    } else {
-        Verbosity::Simple
-    };
-    let reporter = Reporter::new(verbosity, args.fail_log.clone());
-    let upload_enabled = !args.no_upload_to_notion;
+    let reporter = Reporter::new(verbosity(args.verbose, args.quiet), args.fail_log.clone());
+    warn_compatibility_flags(
+        &reporter,
+        args.history_folder.is_some(),
+        args.timezone.is_some(),
+    );
 
-    if args.history_folder.is_some() {
+    let from_history = args.from_history || args.verify_history;
+    run_accounts(
+        config_path,
+        RunArgs {
+            db_id: args.db_id,
+            image_folder: args.image_folder,
+            delete_conversation: args.delete_conversation,
+            delete_library: args.delete_library,
+            delete_library_all: args.delete_library_all,
+            confirm_delete_library: args.yes,
+            check_notion_api: args.check_notion_api
+                || !args.no_check_notion_api
+                || args.verify_history,
+            from_history,
+            include_uploaded: args.verify_history,
+            keep_days: if from_history && !args.all {
+                Some(3)
+            } else {
+                None
+            },
+            no_cache: args.no_cache,
+            limit: args.limit,
+            conversation_delay: args.conversation_delay,
+            account: args.account,
+        },
+        &reporter,
+    )
+    .await
+}
+
+fn warn_compatibility_flags(reporter: &Reporter, has_history_folder: bool, has_timezone: bool) {
+    if has_history_folder {
         reporter.verbose(
             "--history-folder is accepted for compatibility; the SQLite database is the source of truth",
         );
     }
-    if args.timezone.is_some() {
+    if has_timezone {
         reporter.verbose(
             "--timezone is accepted for compatibility; keep-days filtering uses absolute time",
         );
     }
-    if args.no_upload_to_notion && args.delete_conversation {
-        reporter.warn("--delete-conversation is ignored when --no-upload-to-notion is used");
-    }
+}
+
+async fn run_accounts(config_path: &Path, args: RunArgs, reporter: &Reporter) -> Result<()> {
+    let config = Config::load(Some(config_path))?;
+    let filesystem = Filesystem::new();
+    let store = Arc::new(SqliteStore::open(filesystem.db_path())?);
+    store.init_db()?;
 
     let target_accounts = if let Some(account) = args.account.as_deref() {
         config.account(account)?;
@@ -249,71 +286,32 @@ async fn run_upload(config_path: &Path, args: UploadArgs) -> Result<()> {
     };
 
     let total_accounts = target_accounts.len();
+    let action = "Sync";
     let mut had_error = false;
 
     for (index, account_name) in target_accounts.iter().enumerate() {
         let resolved = config.account(account_name)?;
+
         let configured_db_id = args
             .db_id
             .clone()
             .or_else(|| resolved.notion.database_id.clone());
-
-        let db_id = if upload_enabled {
-            let Some(db_id) = configured_db_id else {
-                bail!("db_id must be provided");
-            };
-            validate_db_id(&db_id)?;
-            db_id
-        } else {
-            if configured_db_id.is_some() {
-                reporter.verbose(
-                    "--db-id and notion.database_id are ignored when uploads are disabled",
-                );
-            }
-            configured_db_id.unwrap_or_default()
+        let Some(db_id) = configured_db_id else {
+            bail!("db_id must be provided");
         };
+        validate_db_id(&db_id)?;
 
         let mut required = vec![
             RequiredVar::ChatGptAuthorizationToken,
             RequiredVar::ChatGptUserAgent,
             RequiredVar::ChatGptCookie,
+            RequiredVar::NotionApiKey,
         ];
-        if upload_enabled {
-            required.push(RequiredVar::NotionApiKey);
-            if args.db_id.is_none() {
-                required.push(RequiredVar::NotionDatabaseId);
-            }
+        if args.db_id.is_none() {
+            required.push(RequiredVar::NotionDatabaseId);
         }
         resolved.validate_runtime(&required)?;
 
-        print_account_header(
-            &reporter,
-            "Upload To Notion",
-            account_name,
-            index + 1,
-            total_accounts,
-        );
-
-        let chatgpt = ChatGptClient::new(resolved.provider_context()?)?;
-        let notion = if upload_enabled {
-            Some(NotionClient::new(
-                resolved.notion_context()?,
-                store.clone(),
-            )?)
-        } else {
-            None
-        };
-        let notion_api: Option<&dyn NotionApi> =
-            notion.as_ref().map(|client| client as &dyn NotionApi);
-
-        let effective_from_history = args.from_history || args.verify_history;
-        let effective_check_notion_api =
-            args.check_notion_api || !args.no_check_notion_api || args.verify_history;
-        let effective_keep_days = if effective_from_history && !args.all {
-            Some(3)
-        } else {
-            None
-        };
         let conversation_delay = args
             .conversation_delay
             .or(resolved.conversation_delay)
@@ -322,43 +320,42 @@ async fn run_upload(config_path: &Path, args: UploadArgs) -> Result<()> {
             bail!("--conversation-delay must be a non-negative number");
         }
 
-        let options = UploadOptions {
+        print_account_header(reporter, action, account_name, index + 1, total_accounts);
+
+        let chatgpt = ChatGptClient::new(resolved.provider_context()?)?;
+        let notion = NotionClient::new(resolved.notion_context()?, store.clone())?;
+        let options = SyncOptions {
             account: account_name.clone(),
-            db_id: db_id.clone(),
+            db_id,
             image_folder: args.image_folder.clone(),
-            upload_to_notion: upload_enabled,
             delete_conversation: args.delete_conversation,
             delete_library: args.delete_library,
             delete_library_all: args.delete_library_all,
-            confirm_delete_library: args.yes,
-            check_notion_api: effective_check_notion_api,
-            from_history: effective_from_history,
-            include_uploaded: args.verify_history,
+            confirm_delete_library: args.confirm_delete_library,
+            check_notion_api: args.check_notion_api,
+            from_history: args.from_history,
+            include_uploaded: args.include_uploaded,
             limit: args.limit,
-            keep_days: effective_keep_days,
+            keep_days: args.keep_days,
             no_cache: args.no_cache,
             conversation_delay,
         };
 
-        let result = upload_to_notion_sequential(
+        let result = sync(
             &options,
             &config,
             store.as_ref(),
             &filesystem,
             &chatgpt,
-            notion_api,
-            &reporter,
+            &notion,
+            reporter,
         )
         .await;
 
         match result {
-            Ok(()) => print_account_footer(
-                &reporter,
-                "Upload To Notion",
-                account_name,
-                index + 1,
-                total_accounts,
-            ),
+            Ok(()) => {
+                print_account_footer(reporter, action, account_name, index + 1, total_accounts)
+            }
             Err(error) => {
                 reporter.error(format!("[{account_name}] {error:#}"));
                 had_error = true;
@@ -370,6 +367,16 @@ async fn run_upload(config_path: &Path, args: UploadArgs) -> Result<()> {
         bail!("one or more accounts failed");
     }
     Ok(())
+}
+
+fn verbosity(verbose: bool, quiet: bool) -> Verbosity {
+    if quiet {
+        Verbosity::Quiet
+    } else if verbose {
+        Verbosity::Verbose
+    } else {
+        Verbosity::Simple
+    }
 }
 
 fn run_account_status(config_path: &Path, args: AccountStatusArgs) -> Result<()> {
@@ -487,15 +494,30 @@ async fn run_delete_library(config_path: &Path, args: DeleteLibraryArgs) -> Resu
     Ok(())
 }
 
-fn validate_upload_args(args: &UploadArgs) -> Result<()> {
-    if args.verbose && args.quiet {
-        bail!("Cannot use --verbose and --quiet together");
-    }
-    if args.delete_library && args.delete_library_all {
-        bail!("Use either --delete-library or --delete-library-all, not both");
-    }
+fn validate_sync_args(args: &SyncArgs) -> Result<()> {
+    validate_common_flags(
+        args.verbose,
+        args.quiet,
+        args.delete_library,
+        args.delete_library_all,
+    )?;
     if args.all && !(args.from_history || args.verify_history) {
         bail!("--all only applies with --from-history or --verify-history");
+    }
+    Ok(())
+}
+
+fn validate_common_flags(
+    verbose: bool,
+    quiet: bool,
+    delete_library: bool,
+    delete_library_all: bool,
+) -> Result<()> {
+    if verbose && quiet {
+        bail!("Cannot use --verbose and --quiet together");
+    }
+    if delete_library && delete_library_all {
+        bail!("Use either --delete-library or --delete-library-all, not both");
     }
     Ok(())
 }
@@ -567,15 +589,7 @@ fn print_activity_table(rows: &[ActivityRow], title: &str) {
 
 fn verbosity_for(command: &Command) -> Verbosity {
     match command {
-        Command::UploadToNotion(args) => {
-            if args.quiet {
-                Verbosity::Quiet
-            } else if args.verbose {
-                Verbosity::Verbose
-            } else {
-                Verbosity::Simple
-            }
-        }
+        Command::Sync(args) => verbosity(args.verbose, args.quiet),
         _ => Verbosity::Simple,
     }
 }
@@ -599,13 +613,11 @@ fn init_tracing(verbosity: Verbosity) {
 mod tests {
     use super::*;
 
-    fn upload_args() -> UploadArgs {
-        UploadArgs {
+    fn sync_args() -> SyncArgs {
+        SyncArgs {
             history_folder: None,
             image_folder: None,
             db_id: None,
-            upload_to_notion: false,
-            no_upload_to_notion: false,
             delete_conversation: false,
             delete_library: false,
             delete_library_all: false,
@@ -628,25 +640,25 @@ mod tests {
 
     #[test]
     fn rejects_conflicting_verbosity() {
-        let mut args = upload_args();
+        let mut args = sync_args();
         args.verbose = true;
         args.quiet = true;
-        assert!(validate_upload_args(&args).is_err());
+        assert!(validate_sync_args(&args).is_err());
     }
 
     #[test]
     fn rejects_all_without_history_mode() {
-        let mut args = upload_args();
+        let mut args = sync_args();
         args.all = true;
-        assert!(validate_upload_args(&args).is_err());
+        assert!(validate_sync_args(&args).is_err());
     }
 
     #[test]
     fn accepts_all_with_history_mode() {
-        let mut args = upload_args();
+        let mut args = sync_args();
         args.all = true;
         args.from_history = true;
-        assert!(validate_upload_args(&args).is_ok());
+        assert!(validate_sync_args(&args).is_ok());
     }
 
     #[test]

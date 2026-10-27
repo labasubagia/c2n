@@ -70,7 +70,7 @@ src/
 │   ├── account_status.rs
 │   ├── history.rs
 │   ├── image.rs
-│   └── upload.rs
+│   └── sync.rs
 └── shared/
     ├── constants.rs
     ├── http.rs
@@ -124,10 +124,11 @@ checks. Expired rows are deleted lazily.
 
 1. A row is marked uploaded **only** after a successful Notion page creation or
    a positive remote Notion duplicate check.
-2. When `--no-upload-to-notion` is active, rows are never marked uploaded.
-3. A conversation is hidden only when every image in it is in the uploaded or
+2. A conversation is hidden only when every image in it is in the uploaded or
    already-uploaded state.
-4. Library deletion is explicit: both the standalone command and upload-time
+3. Local image files are removed only after ChatGPT confirms the conversation
+   was deleted.
+4. Library deletion is explicit: both the standalone command and post-run
    cleanup require `--yes`.
 5. All timestamps written by the tool are UTC RFC 3339 strings. Local time is
    used only for display and date-boundary calculations.
@@ -136,7 +137,7 @@ checks. Expired rows are deleted lazily.
 
 ## 4. Feature Flows
 
-### 4.1 Image Sync Pipeline (`upload-to-notion`)
+### 4.1 Image Sync Pipeline (`sync`)
 
 #### 4.1.1 Discovery
 
@@ -146,9 +147,9 @@ Two sources are supported:
   Items are grouped by `conversation_id`. Conversation details are fetched at
   most once per conversation, and only when at least one image is not already
   indexed locally.
-- **History replay** (`--from-history` / `--verify-history`): rows are read from
-  SQLite. `--from-history` selects non-uploaded rows. `--verify-history` also
-  includes uploaded rows so they can be audited against Notion. The default
+- **History replay** (`--from-history` or `--verify-history`): rows are read
+  from SQLite. `--from-history` selects non-uploaded rows. `--verify-history`
+  also includes uploaded rows so they can be audited against Notion. The default
   window is the last 3 days; `--all` removes it.
 
 Prompt extraction walks the conversation mapping from the image node to the
@@ -159,12 +160,11 @@ missing, the tool falls back to locating the node by `asset_pointer`.
 
 ```text
 for each generation in conversation:
-    if upload enabled:
-        if uploaded_at set and remote checks disabled:
-            skip as already uploaded
-        if Notion page with title == file name exists:
-            mark uploaded_at
-            skip as already uploaded
+    if uploaded_at set and remote checks disabled:
+        skip as already uploaded
+    if Notion page with title == file name exists:
+        mark uploaded_at
+        skip as already uploaded
 
     if local image file is missing:
         download to a temporary file
@@ -172,13 +172,10 @@ for each generation in conversation:
 
     inject prompt into PNG metadata (idempotent, atomic)
 
-    if upload enabled:
-        create Notion file upload
-        send file bytes
-        create page with title, image, prompt Markdown, email
-        mark uploaded_at
-    else:
-        return downloaded-only
+    create Notion file upload
+    send file bytes
+    create page with title, image, prompt Markdown, email
+    mark uploaded_at
 ```
 
 File names are `<generation id><extension>`, where the extension comes from the
@@ -186,24 +183,20 @@ source URL and defaults to `.png`.
 
 #### 4.1.3 Conversation Outcome and Cleanup
 
-Each conversation tracks two booleans:
-
-- `all_ok`: no image failed.
-- `all_uploaded`: every image is `Uploaded` or `AlreadyUploaded`.
-
+Each conversation tracks `all_ok`, which is true when no image failed.
 `--delete-conversation` sends
 `PATCH /backend-api/conversation/{id}` with `{"is_visible": false}` only when:
 
 ```text
 all_ok
-&& all_uploaded
-&& upload_to_notion
 && !from_history
 ```
 
-If any image fails, or upload is disabled, the conversation is kept and a
-verbose warning is emitted. A 404 response containing `conversation_deleted` is
-treated as success.
+If any image fails, the conversation is kept. A 404 response containing
+`conversation_deleted` is treated as success. After a successful delete, the
+conversation's local image files are removed. If the delete request fails, the
+files are kept. Missing files are ignored during removal; other filesystem
+errors produce a warning and do not fail the run. SQLite rows are retained.
 
 #### 4.1.4 Failure Logging
 
@@ -241,29 +234,24 @@ flowchart TD
     Conv --> Details[Fetch conversation details if new images]
     Details --> Item[Next image]
 
-    Item --> Upload{Upload enabled?}
-    Upload -- Yes --> Local{uploaded_at set and no remote check?}
+    Item --> Local{uploaded_at set and no remote check?}
     Local -- Yes --> Skip[Skip as already uploaded]
     Local -- No --> Remote{Page exists in Notion?}
     Remote -- Yes --> Mark[Mark uploaded_at]
-    Remote -- No --> Download
-    Upload -- No --> Download{File exists?}
+    Remote -- No --> Download{File exists?}
 
     Download -- No --> Get[Download atomically]
     Download -- Yes --> Prompt
     Get --> Prompt[Inject prompt into PNG]
 
-    Prompt --> Publish{Upload enabled?}
-    Publish -- No --> Downloaded[Downloaded only]
-    Publish -- Yes --> Create[Create upload, send file, create page]
+    Prompt --> Create[Create upload, send file, create page]
     Create --> Mark
 
     Skip --> Outcome
     Mark --> Outcome
-    Downloaded --> Outcome
-    Outcome{all_ok and all_uploaded?}
-    Outcome -- Yes --> Delete{Delete conversations enabled?}
-    Delete -- Yes --> Hide[Hide conversation]
+    Outcome{all_ok?}
+    Outcome -- Yes --> Delete{Delete conversations enabled and not history?}
+    Delete -- Yes --> Hide[Hide conversation and remove local images]
     Delete -- No --> Next
     Outcome -- No --> Keep[Keep conversation and log failure]
     Hide --> Next
@@ -355,9 +343,9 @@ is marked ready, matching the original tool's behavior.
   A blank query is rejected instead of being treated as “all images”. Deletes
   use the ChatGPT `delete_stream` endpoint, parse SSE `data:` events, and show a
   live progress indicator.
-- **Upload-time library cleanup** (`upload-to-notion --delete-library` or
-  `--delete-library-all`): also dry-runs unless `--yes` is supplied. In dry-run
-  mode it counts matching images without deleting them. Blank configured
+- **Post-run library cleanup** (`sync --delete-library` or
+  `sync --delete-library-all`): also dry-runs unless `--yes` is supplied. In
+  dry-run mode it counts matching images without deleting them. Blank configured
   queries are ignored, and an empty query list is reported as a warning.
 
 ---
@@ -425,12 +413,13 @@ Tests target public behavior:
   - page-creation retry with the same upload ID
   - 400 “already uploaded” fallback
   - data-source cache reuse and fail-closed empty data sources
-- The upload pipeline is tested with injected `ChatGptApi`/`NotionApi` fakes and
+- The sync pipeline is tested with injected `ChatGptApi`/`NotionApi` fakes and
   a real temporary SQLite database:
-  - `--no-upload-to-notion` never marks rows uploaded and never deletes
-    conversations
-  - download-only works without a database ID or Notion client
-  - a verified upload marks the row and deletes the conversation
+  - a verified upload marks the row, deletes the conversation, and removes the
+    local image
+  - a failed conversation delete keeps the local image
+  - a failed upload keeps the local image
+  - history replay keeps the local image and never deletes conversations
 - SQLite tests cover corrupt cache recovery and backup/restore through the live
   connection.
 - CLI tests cover argument conflicts without loading configuration.

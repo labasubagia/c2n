@@ -9,7 +9,7 @@ the useful CLI surface and safety properties while using typed Rust APIs,
 
 ## Features
 
-- Download recent ChatGPT image generations for one or more accounts.
+- Sync recent ChatGPT image generations for one or more accounts.
 - Store image generations in a local SQLite database (`output/chatgpt.db`).
 - Embed the prompt in PNG `tEXt`/`iTXt` metadata without rewriting files that
   already contain the correct prompt.
@@ -21,15 +21,14 @@ the useful CLI surface and safety properties while using typed Rust APIs,
 - Optionally hide processed ChatGPT conversations with a fail-safe verification
   step.
 - Optionally remove images from the ChatGPT library, with dry-run defaults for
-  both the standalone `delete-library` command and upload-time library cleanup.
+  both the standalone `delete-library` command and post-run library cleanup.
 - Back up and restore the SQLite database with the SQLite backup API.
 
 ## Requirements
 
 - Rust 1.85 or newer (the crate uses edition 2024).
 - ChatGPT session credentials for each configured account.
-- For uploads: a Notion integration token and a database shared with that
-  integration. Download-only mode (`--no-upload-to-notion`) does not need them.
+- A Notion integration token and a database shared with that integration.
 
 ## Build
 
@@ -93,80 +92,73 @@ Show help:
 
 ```bash
 c2n --help
-c2n upload-to-notion --help
+c2n sync --help
 ```
 
 Upload recent generations for one account:
 
 ```bash
-c2n upload-to-notion --account personal@example.com --limit 100
+c2n sync --account personal@example.com --limit 100
 ```
 
 Process every configured account sequentially:
 
 ```bash
-c2n upload-to-notion
-```
-
-Download and embed prompts without uploading to Notion (no Notion
-credentials or database ID are required):
-
-```bash
-c2n upload-to-notion --no-upload-to-notion
+c2n sync
 ```
 
 Replay non-uploaded items from the local database (last 3 days):
 
 ```bash
-c2n upload-to-notion --from-history
+c2n sync --from-history
 ```
 
 Replay all non-uploaded history:
 
 ```bash
-c2n upload-to-notion --from-history --all
+c2n sync --from-history --all
 ```
 
 Audit and repair uploaded items against Notion (last 3 days):
 
 ```bash
-c2n upload-to-notion --verify-history
+c2n sync --verify-history
 ```
 
 Audit all uploaded history:
 
 ```bash
-c2n upload-to-notion --verify-history --all
+c2n sync --verify-history --all
 ```
 
 Hide conversations after every image in them is verified uploaded:
 
 ```bash
-c2n upload-to-notion --delete-conversation
+c2n sync --delete-conversation
 ```
 
 Preview configured library-query deletion after upload:
 
 ```bash
-c2n upload-to-notion --delete-library
+c2n sync --delete-library
 ```
 
 Delete configured library queries after upload:
 
 ```bash
-c2n upload-to-notion --delete-library --yes
+c2n sync --delete-library --yes
 ```
 
 Preview deletion of the entire ChatGPT image library after upload:
 
 ```bash
-c2n upload-to-notion --delete-library-all
+c2n sync --delete-library-all
 ```
 
 Delete the entire ChatGPT image library after upload:
 
 ```bash
-c2n upload-to-notion --delete-library-all --yes
+c2n sync --delete-library-all --yes
 ```
 
 Check account cooldowns:
@@ -210,29 +202,28 @@ c2n delete-library --yes          # all library images
   enabled by default.
 - `--no-check-notion-api` trusts the local `uploaded_at` marker. The default is
   to query Notion to prevent duplicates when local state is stale.
-- `--upload-to-notion` is accepted for CLI compatibility; uploads are enabled
-  by default.
-- With `--no-upload-to-notion`, Notion credentials and a database ID are not
-  required. The tool only needs ChatGPT credentials.
+- `sync` always uploads and requires Notion credentials and a database ID.
 
 ### Conversation deletion
 
 `--delete-conversation` is deliberately conservative:
 
-- It is ignored when `--no-upload-to-notion` is used.
+- It is only available on `sync`.
 - It is ignored in history replay mode.
 - A conversation is hidden only when every image in it was uploaded or verified
   already uploaded.
 - If any image fails, the conversation is kept.
 - A 404 response containing `conversation_deleted` is treated as success.
+- After a confirmed deletion, that conversation's local image files are
+  removed. If deletion fails, the files are kept.
 
 ### Library deletion
 
 - `delete-library` is a dry run unless `--yes` is supplied.
 - `--max-concurrent` controls concurrent delete requests (default 10).
-- `upload-to-notion --delete-library` uses `delete_library_queries` from the
-  config. `--delete-library-all` targets every library image.
-- Upload-time library cleanup is also a dry run unless `--yes` is supplied.
+- `sync --delete-library` uses `delete_library_queries` from the config.
+  `--delete-library-all` targets every library image.
+- Post-run library cleanup is also a dry run unless `--yes` is supplied.
 - `remove_all_library_images = true` makes `--delete-library` behave like
   `--delete-library-all`.
 - Blank configured queries are ignored; delete all images explicitly with
@@ -269,7 +260,7 @@ c2n delete-library --yes          # all library images
 - `--history-folder` is accepted for compatibility, but SQLite is the source of
   truth.
 - `--timezone` is accepted for compatibility. `account-status` uses it for date
-  boundaries; upload history filtering uses absolute time.
+  boundaries; history filtering uses absolute time.
 
 ## Development
 
@@ -281,7 +272,7 @@ cargo build --release
 ```
 
 The test suite includes unit tests and wiremock integration tests for the
-ChatGPT and Notion adapters and the upload pipeline's safety guarantees. CI runs
+ChatGPT and Notion adapters and the sync pipeline's safety guarantees. CI runs
 formatting, clippy, tests, and a release build.
 
 ## Project structure
@@ -291,7 +282,7 @@ src/
 ├── adapters/     # filesystem, SQLite, ChatGPT, Notion
 ├── cli/          # clap definitions and command handlers
 ├── domain/       # shared data and config models
-├── services/     # upload, history, image, account status
+├── services/     # sync, history, image, account status
 ├── shared/       # constants, HTTP retry, time, reporting
 ├── config.rs
 ├── lib.rs
@@ -300,7 +291,7 @@ tests/
 ├── chatgpt_api.rs
 ├── cli.rs
 ├── notion_api.rs
-└── upload_pipeline.rs
+└── sync_pipeline.rs
 docs/
 ├── requirement.md
 ├── technical.md

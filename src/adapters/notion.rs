@@ -384,7 +384,11 @@ impl NotionApi for NotionClient {
 fn is_ambiguous_page_create_error(error: &HttpError) -> bool {
     match error {
         HttpError::Request(error) => {
-            error.is_timeout() || error.is_connect() || error.is_request() || error.is_body() || error.is_decode()
+            error.is_timeout()
+                || error.is_connect()
+                || error.is_request()
+                || error.is_body()
+                || error.is_decode()
         }
         HttpError::Status { status, .. } => status.is_server_error(),
         HttpError::Io(_) => false,

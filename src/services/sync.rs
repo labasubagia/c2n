@@ -127,10 +127,10 @@ async fn run(
     notion: &dyn NotionApi,
     reporter: &Reporter,
 ) -> Result<(), SyncError> {
-    let resolved = config.account(&options.account)?;
+    config.account(&options.account)?;
     store.init_db()?;
 
-    let image_folder = filesystem.resolve_image_folder(resolved.image_folder.as_deref())?;
+    let image_folder = filesystem.image_folder()?;
     let mut uploaded_ids = get_uploaded_generation_ids(store, &options.account)?;
 
     let (conversations, mut existing_ids) = if options.from_history {

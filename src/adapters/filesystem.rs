@@ -47,27 +47,9 @@ impl Filesystem {
         self.output_root.join(DB_FILE_NAME)
     }
 
-    /// Resolve the image folder.
-    ///
-    /// CLI paths may be absolute. Relative CLI paths are resolved under
-    /// `output/`. Configured paths expand `~`; absolute configured paths are
-    /// used as-is, while relative configured paths are also resolved under
-    /// `output/` for consistency and safety.
-    pub fn resolve_image_folder(
-        &self,
-        configured_image_folder: Option<&str>,
-    ) -> Result<PathBuf, FsError> {
-        let folder = if let Some(folder) = configured_image_folder {
-            let expanded = expand_tilde(folder);
-            if expanded.is_absolute() {
-                expanded
-            } else {
-                self.resolve_under_output(&expanded)?
-            }
-        } else {
-            self.output_root.join("images")
-        };
-
+    /// Return the image folder: `<output_root>/images`, creating it.
+    pub fn image_folder(&self) -> Result<PathBuf, FsError> {
+        let folder = self.output_root.join("images");
         std::fs::create_dir_all(&folder)?;
         Ok(folder)
     }
@@ -173,27 +155,6 @@ impl Filesystem {
     }
 }
 
-fn expand_tilde(value: &str) -> PathBuf {
-    if (value == "~" || value.starts_with("~/") || value.starts_with("~\\"))
-        && let Some(home) = home_dir()
-    {
-        let rest = value.trim_start_matches('~');
-        let rest = rest.trim_start_matches(['/', '\\']);
-        return if rest.is_empty() {
-            home
-        } else {
-            home.join(rest)
-        };
-    }
-    PathBuf::from(value)
-}
-
-fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(PathBuf::from)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -217,14 +178,11 @@ mod tests {
     }
 
     #[test]
-    fn allows_absolute_configured_image_folder() {
+    fn defaults_to_images_under_output() {
         let temp = tempfile::tempdir().unwrap();
         let filesystem = Filesystem::with_output_root(temp.path().join("output"));
-        let absolute = temp.path().join("absolute-images");
-        let resolved = filesystem
-            .resolve_image_folder(Some(absolute.to_str().unwrap()))
-            .unwrap();
-        assert_eq!(resolved, absolute);
+        let resolved = filesystem.image_folder().unwrap();
+        assert_eq!(resolved, temp.path().join("output/images"));
         assert!(resolved.is_dir());
     }
 

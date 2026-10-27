@@ -65,6 +65,6 @@ CI runs the four commands above in that order. Do not use `cargo test` alone as 
 
 ## Git and PRs
 
-- `main` is protected: work on a branch and open a PR. Direct pushes, force pushes, and deletion are blocked; there are no bypass actors.
+- `main` is protected: work on a branch and open a PR; only squash merges are allowed. Direct pushes, force pushes, and deletion are blocked; there are no bypass actors.
 - The required `PR Template Compliance` check enforces `.github/PULL_REQUEST_TEMPLATE.md`: use the exact headings `### Summary`, `### Changes Made`, and `### Testing`, replace all placeholder text, and check at least one `- [x]` testing item. Do not paste test logs into the PR body.
 - The `CI` workflow runs formatting, clippy, tests, and a release build; make it pass before merging.

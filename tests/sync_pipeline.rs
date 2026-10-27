@@ -167,7 +167,7 @@ struct TestContext {
 fn test_context() -> TestContext {
     let temp = tempfile::tempdir().unwrap();
     let output = temp.path().join("output");
-    let filesystem = Filesystem::with_output_root(&output);
+    let filesystem = Filesystem::with_data_dir(&output);
     let store = Arc::new(SqliteStore::open(filesystem.db_path()).unwrap());
     store.init_db().unwrap();
 
@@ -181,7 +181,6 @@ fn test_context() -> TestContext {
             user_agent: Some("agent".to_owned()),
             cookie_string_base64: Some("Y29va2ll".to_owned()),
             notion_database_id: None,
-            image_folder: None,
         },
     );
     let config = Config::from_app(PathBuf::from("config.toml"), app).unwrap();
@@ -246,11 +245,7 @@ fn options() -> SyncOptions {
 }
 
 fn image_path(context: &TestContext) -> PathBuf {
-    context
-        .filesystem
-        .resolve_image_folder(None)
-        .unwrap()
-        .join("img1.png")
+    context.filesystem.image_folder().unwrap().join("img1.png")
 }
 
 #[tokio::test]

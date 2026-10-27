@@ -149,8 +149,6 @@ cp config.toml.example config.toml
 [shared]
 user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36..."
 cookie_string_base64 = "b2FpLWRpZD0..."
-# Optional:
-# image_folder = "~/Pictures/chatgpt"
 
 [notion]
 api_key = "secret_yourNotionIntegrationTokenHere"
@@ -171,9 +169,9 @@ authorization_token = "eyJhbGciOiJSUzI1_other..."
 ### 3.3 Resolution Rules
 
 - `[shared]` values are fallbacks.
-- Per-account `user_agent`, `cookie_string_base64`, `notion_database_id`, and
-  `image_folder` override the shared values. Blank per-account strings fall back
-  to the shared value.
+- Per-account `user_agent`, `cookie_string_base64`, and `notion_database_id`
+  override the shared values. Blank per-account strings fall back to the shared
+  value.
 - `notion.api_key` is required for `sync`.
 - `notion.database_id` is required for `sync`; a per-account or `[shared]`
   `notion_database_id` supplies it.

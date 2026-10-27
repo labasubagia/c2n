@@ -148,18 +148,6 @@ fn resolve_account(
     if !missing.is_empty() {
         return Err(ConfigError::MissingRequired(missing.join(", ")));
     }
-
-    let image_folder = account
-        .image_folder
-        .clone()
-        .filter(|value| !value.trim().is_empty())
-        .or_else(|| {
-            shared
-                .image_folder
-                .clone()
-                .filter(|value| !value.trim().is_empty())
-        });
-
     Ok(ResolvedConfig {
         account_name: name.to_owned(),
         authorization_token,
@@ -168,7 +156,6 @@ fn resolve_account(
         notion_api_key: notion_api_key.unwrap(),
         notion_version: notion.version.clone(),
         notion_database_id: notion_database_id.unwrap(),
-        image_folder,
     })
 }
 
@@ -195,7 +182,6 @@ mod tests {
                 user_agent: Some("agent".to_owned()),
                 cookie_string_base64: Some("cookie".to_owned()),
                 notion_database_id: None,
-                image_folder: None,
             },
         );
         app
@@ -212,11 +198,9 @@ mod tests {
     fn resolves_shared_fallbacks() {
         let mut app = app_with("user@example.com");
         app.shared.user_agent = Some("agent".to_owned());
-        app.shared.image_folder = Some("images".to_owned());
         let config = Config::from_app(PathBuf::from("config.toml"), app).unwrap();
         let resolved = config.account("user@example.com").unwrap();
         assert_eq!(resolved.user_agent, "agent");
-        assert_eq!(resolved.image_folder.as_deref(), Some("images"));
     }
 
     #[test]
@@ -224,18 +208,15 @@ mod tests {
         let mut app = app_with("user@example.com");
         app.shared.user_agent = Some("shared-agent".to_owned());
         app.shared.cookie_string_base64 = Some("shared-cookie".to_owned());
-        app.shared.image_folder = Some("shared-images".to_owned());
         {
             let account = app.accounts.get_mut("user@example.com").unwrap();
             account.user_agent = Some("   ".to_owned());
             account.cookie_string_base64 = Some(String::new());
-            account.image_folder = Some("  ".to_owned());
         }
         let config = Config::from_app(PathBuf::from("config.toml"), app).unwrap();
         let resolved = config.account("user@example.com").unwrap();
         assert_eq!(resolved.user_agent, "shared-agent");
         assert_eq!(resolved.cookie_string_base64, "shared-cookie");
-        assert_eq!(resolved.image_folder.as_deref(), Some("shared-images"));
     }
 
     #[test]
@@ -259,18 +240,5 @@ mod tests {
         let config = Config::from_app(PathBuf::from("config.toml"), app).unwrap();
         let resolved = config.account("user@example.com").unwrap();
         assert_eq!(resolved.notion_database_id, "shared");
-    }
-
-    #[test]
-    fn account_image_folder_overrides_shared_image_folder() {
-        let mut app = app_with("user@example.com");
-        app.shared.image_folder = Some("shared-images".to_owned());
-        {
-            let account = app.accounts.get_mut("user@example.com").unwrap();
-            account.image_folder = Some("account-images".to_owned());
-        }
-        let config = Config::from_app(PathBuf::from("config.toml"), app).unwrap();
-        let resolved = config.account("user@example.com").unwrap();
-        assert_eq!(resolved.image_folder.as_deref(), Some("account-images"));
     }
 }

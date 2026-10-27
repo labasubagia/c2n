@@ -71,8 +71,6 @@ pub struct SharedConfig {
     pub cookie_string_base64: Option<String>,
     #[serde(default)]
     pub notion_database_id: Option<String>,
-    #[serde(default)]
-    pub image_folder: Option<String>,
 }
 
 /// Per-account ChatGPT credentials and overrides.
@@ -86,8 +84,6 @@ pub struct AccountConfig {
     pub cookie_string_base64: Option<String>,
     #[serde(default)]
     pub notion_database_id: Option<String>,
-    #[serde(default)]
-    pub image_folder: Option<String>,
 }
 
 /// The TOML configuration file as written by the user.
@@ -112,7 +108,6 @@ pub struct ResolvedConfig {
     pub notion_api_key: String,
     pub notion_version: String,
     pub notion_database_id: String,
-    pub image_folder: Option<String>,
 }
 
 impl ResolvedConfig {

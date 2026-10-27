@@ -189,7 +189,6 @@ mod tests {
                 user_agent: None,
                 cookie_string_base64: None,
                 notion_database_id: None,
-                image_folder: None,
             },
         );
         Config::from_app(PathBuf::from("config.toml"), app).unwrap()

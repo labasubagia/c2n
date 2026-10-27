@@ -14,10 +14,10 @@ pub enum FsError {
     Io(#[from] std::io::Error),
 }
 
-/// Resolves the output root and account-specific image directories.
+/// Resolves the data directory and account-specific image directories.
 #[derive(Debug, Clone)]
 pub struct Filesystem {
-    output_root: PathBuf,
+    data_dir: PathBuf,
 }
 
 impl Default for Filesystem {
@@ -29,45 +29,27 @@ impl Default for Filesystem {
 impl Filesystem {
     pub fn new() -> Self {
         Self {
-            output_root: crate::shared::constants::data_dir(),
+            data_dir: crate::shared::constants::data_dir(),
         }
     }
 
-    pub fn with_output_root(output_root: impl Into<PathBuf>) -> Self {
+    pub fn with_data_dir(data_dir: impl Into<PathBuf>) -> Self {
         Self {
-            output_root: output_root.into(),
+            data_dir: data_dir.into(),
         }
     }
 
-    pub fn output_root(&self) -> &Path {
-        &self.output_root
+    pub fn data_dir(&self) -> &Path {
+        &self.data_dir
     }
 
     pub fn db_path(&self) -> PathBuf {
-        self.output_root.join(DB_FILE_NAME)
+        self.data_dir.join(DB_FILE_NAME)
     }
 
-    /// Resolve the image folder.
-    ///
-    /// CLI paths may be absolute. Relative CLI paths are resolved under
-    /// `output/`. Configured paths expand `~`; absolute configured paths are
-    /// used as-is, while relative configured paths are also resolved under
-    /// `output/` for consistency and safety.
-    pub fn resolve_image_folder(
-        &self,
-        configured_image_folder: Option<&str>,
-    ) -> Result<PathBuf, FsError> {
-        let folder = if let Some(folder) = configured_image_folder {
-            let expanded = expand_tilde(folder);
-            if expanded.is_absolute() {
-                expanded
-            } else {
-                self.resolve_under_output(&expanded)?
-            }
-        } else {
-            self.output_root.join("images")
-        };
-
+    /// Return the image folder: `<data_dir>/images`, creating it.
+    pub fn image_folder(&self) -> Result<PathBuf, FsError> {
+        let folder = self.data_dir.join("images");
         std::fs::create_dir_all(&folder)?;
         Ok(folder)
     }
@@ -78,14 +60,14 @@ impl Filesystem {
             return Err(FsError::AbsoluteNotAllowed(relative.display().to_string()));
         }
 
-        let mut resolved = self.output_root.clone();
+        let mut resolved = self.data_dir.clone();
         for component in relative.components() {
             match component {
                 Component::Normal(part) => resolved.push(part),
                 Component::CurDir => {}
                 Component::ParentDir => {
                     resolved.pop();
-                    if !resolved.starts_with(&self.output_root) {
+                    if !resolved.starts_with(&self.data_dir) {
                         return Err(FsError::Escape(relative.display().to_string()));
                     }
                 }
@@ -95,7 +77,7 @@ impl Filesystem {
             }
         }
 
-        if !resolved.starts_with(&self.output_root) {
+        if !resolved.starts_with(&self.data_dir) {
             return Err(FsError::Escape(relative.display().to_string()));
         }
         self.ensure_existing_ancestor_within_output(&resolved)?;
@@ -105,12 +87,11 @@ impl Filesystem {
     /// Reject paths whose existing ancestors resolve outside the output root,
     /// including paths that traverse a symlink inside `output/`.
     fn ensure_existing_ancestor_within_output(&self, path: &Path) -> Result<(), FsError> {
-        let root =
-            std::fs::canonicalize(&self.output_root).unwrap_or_else(|_| self.output_root.clone());
+        let root = std::fs::canonicalize(&self.data_dir).unwrap_or_else(|_| self.data_dir.clone());
         let mut current = path;
         loop {
-            if current == self.output_root {
-                // The output root itself is the trust boundary; it may be
+            if current == self.data_dir {
+                // The data dir itself is the trust boundary; it may be
                 // created later and may itself be a symlink.
                 return Ok(());
             }
@@ -143,12 +124,12 @@ impl Filesystem {
 
     /// Remove everything in `output/` except the database and `.gitkeep`.
     pub fn clean_output(&self) -> Result<(), FsError> {
-        if !self.output_root.exists() {
+        if !self.data_dir.exists() {
             return Ok(());
         }
 
         let db_path = self.db_path();
-        for entry in std::fs::read_dir(&self.output_root)? {
+        for entry in std::fs::read_dir(&self.data_dir)? {
             let entry = entry?;
             let path = entry.path();
             let file_type = entry.file_type()?;
@@ -173,34 +154,13 @@ impl Filesystem {
     }
 }
 
-fn expand_tilde(value: &str) -> PathBuf {
-    if (value == "~" || value.starts_with("~/") || value.starts_with("~\\"))
-        && let Some(home) = home_dir()
-    {
-        let rest = value.trim_start_matches('~');
-        let rest = rest.trim_start_matches(['/', '\\']);
-        return if rest.is_empty() {
-            home
-        } else {
-            home.join(rest)
-        };
-    }
-    PathBuf::from(value)
-}
-
-fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(PathBuf::from)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn rejects_parent_escape() {
-        let filesystem = Filesystem::with_output_root("/tmp/c2n-output");
+        let filesystem = Filesystem::with_data_dir("/tmp/c2n-output");
         let error = filesystem
             .resolve_under_output(Path::new("../outside"))
             .expect_err("escape should be rejected");
@@ -209,7 +169,7 @@ mod tests {
 
     #[test]
     fn resolves_relative_paths_under_output() {
-        let filesystem = Filesystem::with_output_root("/tmp/c2n-output");
+        let filesystem = Filesystem::with_data_dir("/tmp/c2n-output");
         let resolved = filesystem
             .resolve_under_output(Path::new("images/sub"))
             .unwrap();
@@ -217,14 +177,11 @@ mod tests {
     }
 
     #[test]
-    fn allows_absolute_configured_image_folder() {
+    fn defaults_to_images_under_output() {
         let temp = tempfile::tempdir().unwrap();
-        let filesystem = Filesystem::with_output_root(temp.path().join("output"));
-        let absolute = temp.path().join("absolute-images");
-        let resolved = filesystem
-            .resolve_image_folder(Some(absolute.to_str().unwrap()))
-            .unwrap();
-        assert_eq!(resolved, absolute);
+        let filesystem = Filesystem::with_data_dir(temp.path().join("output"));
+        let resolved = filesystem.image_folder().unwrap();
+        assert_eq!(resolved, temp.path().join("output/images"));
         assert!(resolved.is_dir());
     }
 
@@ -238,7 +195,7 @@ mod tests {
         std::fs::create_dir_all(&outside).unwrap();
         std::os::unix::fs::symlink(&outside, root.join("link")).unwrap();
 
-        let filesystem = Filesystem::with_output_root(&root);
+        let filesystem = Filesystem::with_data_dir(&root);
         let error = filesystem
             .resolve_under_output(Path::new("link/image.png"))
             .expect_err("symlink escape should be rejected");
@@ -254,7 +211,7 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         std::os::unix::fs::symlink(&outside, root.join("link")).unwrap();
 
-        let filesystem = Filesystem::with_output_root(&root);
+        let filesystem = Filesystem::with_data_dir(&root);
         let error = filesystem
             .resolve_under_output(Path::new("link/image.png"))
             .expect_err("dangling symlink escape should be rejected");
@@ -272,7 +229,7 @@ mod tests {
         std::fs::write(outside.join("keep.png"), b"keep").unwrap();
         std::os::unix::fs::symlink(&outside, root.join("link")).unwrap();
 
-        let filesystem = Filesystem::with_output_root(&root);
+        let filesystem = Filesystem::with_data_dir(&root);
         filesystem.clean_output().unwrap();
 
         assert!(outside.join("keep.png").exists());
@@ -295,7 +252,7 @@ mod tests {
         }
         std::fs::write(root.join("images").join("old.png"), b"remove").unwrap();
 
-        let filesystem = Filesystem::with_output_root(&root);
+        let filesystem = Filesystem::with_data_dir(&root);
         filesystem.clean_output().unwrap();
 
         for name in [

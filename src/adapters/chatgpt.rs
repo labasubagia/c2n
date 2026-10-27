@@ -457,44 +457,45 @@ pub fn get_prompt_from_image_node_in_conversation(
 }
 
 fn parse_sse_events(body: &str) -> Vec<Value> {
-    fn append(results: &mut Vec<Value>, raw: &str) {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() || trimmed == "[DONE]" {
-            return;
-        }
-        if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
-            results.push(value);
-        }
-    }
+    let mut events = Vec::new();
 
-    let mut results = Vec::new();
-    for event in body.split("\n\n") {
-        let mut data_lines = Vec::new();
-        for line in event.trim().lines() {
+    for block in body.split("\n\n") {
+        let mut payload = Vec::new();
+        for line in block.lines() {
             let line = line.trim_end_matches('\r');
             if let Some(rest) = line.strip_prefix("data: ") {
-                data_lines.push(rest);
+                payload.push(rest);
             } else if line.starts_with("event: ")
                 || line.starts_with("id: ")
                 || line.starts_with("retry: ")
             {
                 continue;
             } else {
-                data_lines.push(line);
+                payload.push(line);
             }
         }
-        if !data_lines.is_empty() {
-            append(&mut results, &data_lines.join(""));
+        if !payload.is_empty() {
+            push_json(&mut events, &payload.join(""));
         }
     }
 
-    if results.is_empty() && !body.trim().is_empty() {
-        for line in body.trim().lines() {
-            append(&mut results, line);
+    if events.is_empty() && !body.is_empty() {
+        for line in body.lines() {
+            push_json(&mut events, line);
         }
     }
 
-    results
+    events
+}
+
+fn push_json(events: &mut Vec<Value>, raw: &str) {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed == "[DONE]" {
+        return;
+    }
+    if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
+        events.push(value);
+    }
 }
 
 fn deserialize_string<'de, D>(deserializer: D) -> Result<String, D::Error>
@@ -590,5 +591,11 @@ mod tests {
         let body = "data: {\"a\":1}\n\ndata: [DONE]\n\n";
         let events = parse_sse_events(body);
         assert_eq!(events, vec![json!({"a": 1})]);
+    }
+    #[test]
+    fn parses_compact_json_lines_without_sse_blocks() {
+        let body = "{\"a\":1}\n{\"b\":2}";
+        let events = parse_sse_events(body);
+        assert_eq!(events, vec![json!({"a": 1}), json!({"b": 2})]);
     }
 }

@@ -176,8 +176,8 @@ authorization_token = "eyJhbGciOiJSUzI1_other..."
   `history_folder`, `image_folder`, and `conversation_delay` override the shared
   values. Blank per-account strings fall back to the shared value.
 - `notion.api_key` is required for `sync`.
-- `notion.database_id` is required for `sync` unless `--db-id` or
-  `[shared].notion_database_id` supplies one.
+- `notion.database_id` is required for `sync`; a per-account or `[shared]`
+  `notion_database_id` supplies it.
 - Every account key must be a valid email address.
 
 ### Configuration and data locations
@@ -244,7 +244,6 @@ Options:
   accounts, sequentially.
 - `--limit <INT>`: Maximum number of recent image generations to fetch from the
   live API. Default `100`.
-- `--db-id <ID>`: Override the configured Notion database ID.
 - `--delete-conversation`: Hide a conversation in ChatGPT after every image in
   it is verified uploaded, then remove that conversation's local image files.
   Ignored in history replay modes.

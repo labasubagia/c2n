@@ -84,10 +84,6 @@ pub enum LibraryCommand {
 
 #[derive(Debug, Args)]
 pub struct SyncArgs {
-    /// Notion database ID (overrides the configured database).
-    #[arg(long)]
-    pub db_id: Option<String>,
-
     /// Hide conversations in ChatGPT after all their images are verified uploaded.
     #[arg(long)]
     pub delete_conversation: bool,
@@ -206,7 +202,6 @@ async fn run_library(cmd: LibraryCommand) -> Result<()> {
 
 #[derive(Debug)]
 struct RunArgs {
-    db_id: Option<String>,
     delete_conversation: bool,
     check_notion_api: bool,
     from_history: bool,
@@ -227,7 +222,6 @@ async fn run_sync(args: SyncArgs) -> Result<()> {
     let from_history = args.from_history || args.verify_history;
     run_accounts(
         RunArgs {
-            db_id: args.db_id,
             delete_conversation: args.delete_conversation,
             check_notion_api: args.check_notion_api
                 || !args.no_check_notion_api
@@ -281,24 +275,19 @@ async fn run_accounts(args: RunArgs, reporter: &Reporter) -> Result<()> {
     for (index, account_name) in target_accounts.iter().enumerate() {
         let resolved = config.account(account_name)?;
 
-        let configured_db_id = args
-            .db_id
-            .clone()
-            .or_else(|| resolved.notion.database_id.clone());
+        let configured_db_id = resolved.notion.database_id.clone();
         let Some(db_id) = configured_db_id else {
             bail!("db_id must be provided");
         };
         validate_db_id(&db_id)?;
 
-        let mut required = vec![
+        let required = vec![
             RequiredVar::ChatGptAuthorizationToken,
             RequiredVar::ChatGptUserAgent,
             RequiredVar::ChatGptCookie,
             RequiredVar::NotionApiKey,
+            RequiredVar::NotionDatabaseId,
         ];
-        if args.db_id.is_none() {
-            required.push(RequiredVar::NotionDatabaseId);
-        }
         resolved.validate_runtime(&required)?;
 
         let conversation_delay = args
@@ -581,7 +570,6 @@ mod tests {
 
     fn sync_args() -> SyncArgs {
         SyncArgs {
-            db_id: None,
             delete_conversation: false,
             check_notion_api: false,
             no_check_notion_api: false,

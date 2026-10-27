@@ -219,6 +219,7 @@ async fn run(
             match process_one(
                 generation,
                 options,
+                filesystem,
                 &image_folder,
                 store,
                 notion,
@@ -262,7 +263,12 @@ async fn run(
                                 "✅ Conversation {conversation_id} deleted{suffix}"
                             ));
                         }
-                        remove_conversation_images(&generations, &image_folder, reporter);
+                        remove_conversation_images(
+                            &generations,
+                            filesystem,
+                            &image_folder,
+                            reporter,
+                        );
                     }
                     Err(error) => reporter.error(format!(
                         "Failed to delete conversation {conversation_id}: {error}"
@@ -293,6 +299,7 @@ async fn run(
 async fn process_one(
     generation: &ChatGptImageGeneration,
     options: &SyncOptions,
+    filesystem: &Filesystem,
     image_folder: &Path,
     store: &dyn GenerationStore,
     notion: &dyn NotionApi,
@@ -302,6 +309,9 @@ async fn process_one(
 ) -> Result<(), ProcessFailure> {
     let file_name = file_name_for(generation);
     let file_path = image_folder.join(&file_name);
+    let safe_file_path = filesystem
+        .safe_image_path(&file_path)
+        .map_err(|error| ProcessFailure::new(ProcessStage::Download, error))?;
 
     if uploaded_ids.contains(&generation.id) && !options.check_notion_api {
         reporter.verbose(format!("⏭️  {file_name} skipped, already uploaded"));
@@ -327,14 +337,14 @@ async fn process_one(
         }
     }
 
-    if !file_path.exists() {
+    if !safe_file_path.exists() {
         chatgpt
-            .download_image(&generation.url, &file_path)
+            .download_image(&generation.url, &safe_file_path)
             .await
             .map_err(|error| ProcessFailure::new(ProcessStage::Download, error))?;
     }
 
-    match add_prompt_to_image(&file_path, &generation.prompt) {
+    match add_prompt_to_image(&safe_file_path, &generation.prompt) {
         Ok(ImageOutcome::SkippedNotPng) => reporter.verbose(format!(
             "⚠️  {file_name} is not a PNG; prompt metadata was not embedded"
         )),
@@ -345,7 +355,7 @@ async fn process_one(
     }
 
     notion
-        .add_page_to_db(&options.db_id, &file_path, &generation.prompt)
+        .add_page_to_db(&options.db_id, &safe_file_path, &generation.prompt)
         .await
         .map_err(|error| ProcessFailure::new(ProcessStage::Upload, error))?;
     let ids = HashSet::from([generation.id.clone()]);
@@ -361,13 +371,21 @@ async fn process_one(
 /// confirms the conversation was deleted.
 fn remove_conversation_images(
     generations: &[ChatGptImageGeneration],
+    filesystem: &Filesystem,
     image_folder: &Path,
     reporter: &Reporter,
 ) {
     for generation in generations {
         let file_name = file_name_for(generation);
         let file_path = image_folder.join(&file_name);
-        match std::fs::remove_file(&file_path) {
+        let safe_file_path = match filesystem.safe_image_path(&file_path) {
+            Ok(path) => path,
+            Err(error) => {
+                reporter.warn(format!("Failed to remove {file_name}: {error}"));
+                continue;
+            }
+        };
+        match std::fs::remove_file(&safe_file_path) {
             Ok(()) => reporter.verbose(format!("🗑️  {file_name} removed")),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => reporter.warn(format!("Failed to remove {file_name}: {error}")),

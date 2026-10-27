@@ -110,6 +110,10 @@ async fn downloads_image_to_destination_atomically() {
         .unwrap();
 
     assert_eq!(std::fs::read(&destination).unwrap(), b"image-bytes");
+    let requests = server.received_requests().await.unwrap();
+    let download = requests.first().expect("image download request");
+    assert!(download.headers.get("authorization").is_none());
+    assert!(download.headers.get("cookie").is_none());
     let leftovers: Vec<_> = std::fs::read_dir(destination.parent().unwrap())
         .unwrap()
         .filter_map(Result::ok)

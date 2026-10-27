@@ -324,6 +324,12 @@ preserving:
 c2n img clear
 ```
 
+This command is a dry run by default. Pass `--yes` to remove the listed entries:
+
+```bash
+c2n img clear --yes
+```
+
 ### 4.4 `db backup`
 
 Copies the local database to a target path using the SQLite backup API. This
@@ -347,7 +353,12 @@ c2n db restore ./backups/chatgpt.db
 c2n db restore /home/user/backups/chatgpt.db
 ```
 
-Stop scheduled sync jobs before restoring to avoid interleaving writes.
+Restore is a dry run by default. Pass `--yes` to apply it, and stop scheduled
+sync jobs before restoring to avoid interleaving writes:
+
+```bash
+c2n db restore ./backups/chatgpt.db --yes
+```
 
 ### 4.6 `library delete`
 

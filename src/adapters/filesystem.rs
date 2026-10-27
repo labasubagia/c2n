@@ -47,11 +47,43 @@ impl Filesystem {
         self.data_dir.join(DB_FILE_NAME)
     }
 
-    /// Return the image folder: `<data_dir>/images`, creating it.
+    /// Return the image folder: `<data_dir>/images`, creating it only when
+    /// its path remains within the data directory (including symlink checks).
     pub fn image_folder(&self) -> Result<PathBuf, FsError> {
-        let folder = self.data_dir.join("images");
+        let folder = self.resolve_under_output(Path::new("images"))?;
         std::fs::create_dir_all(&folder)?;
+        self.ensure_existing_ancestor_within_output(&folder)?;
         Ok(folder)
+    }
+
+    /// Verify that a path under the images directory does not traverse a
+    /// symlink outside the data directory.
+    pub fn validate_image_path(&self, path: &Path) -> Result<(), FsError> {
+        let folder = self.data_dir.join("images");
+        let relative = path
+            .strip_prefix(&folder)
+            .map_err(|_| FsError::Escape(path.display().to_string()))?;
+        let relative = Path::new("images").join(relative);
+        self.resolve_under_output(&relative).map(|_| ())
+    }
+
+    /// Return an image path whose parent is canonicalized beneath the data
+    /// root. File operations can use this stable parent instead of resolving a
+    /// potentially replaced `images` symlink again.
+    pub fn safe_image_path(&self, path: &Path) -> Result<PathBuf, FsError> {
+        self.validate_image_path(path)?;
+        let file_name = path
+            .file_name()
+            .ok_or_else(|| FsError::Escape(path.display().to_string()))?;
+        let parent = path
+            .parent()
+            .ok_or_else(|| FsError::Escape(path.display().to_string()))?;
+        let canonical_root = std::fs::canonicalize(&self.data_dir)?;
+        let canonical_parent = std::fs::canonicalize(parent)?;
+        if !canonical_parent.starts_with(&canonical_root) {
+            return Err(FsError::Escape(path.display().to_string()));
+        }
+        Ok(canonical_parent.join(file_name))
     }
 
     /// Resolve a relative path beneath the output directory, rejecting escapes.
@@ -122,13 +154,13 @@ impl Filesystem {
         }
     }
 
-    /// Remove everything in `output/` except the database and `.gitkeep`.
-    pub fn clean_output(&self) -> Result<(), FsError> {
+    /// List entries `clean_output` would remove, without changing the filesystem.
+    pub fn list_cleanable_entries(&self) -> Result<Vec<PathBuf>, FsError> {
         if !self.data_dir.exists() {
-            return Ok(());
+            return Ok(Vec::new());
         }
-
         let db_path = self.db_path();
+        let mut removable = Vec::new();
         for entry in std::fs::read_dir(&self.data_dir)? {
             let entry = entry?;
             let path = entry.path();
@@ -144,7 +176,45 @@ impl Filesystem {
             {
                 continue;
             }
+            removable.push(path);
+        }
+        Ok(removable)
+    }
+
+    /// Remove everything in `output/` except the database and `.gitkeep`.
+    pub fn clean_output(&self) -> Result<(), FsError> {
+        if !self.data_dir.exists() {
+            return Ok(());
+        }
+
+        let root = std::fs::canonicalize(&self.data_dir)?;
+        let db_path = self.db_path();
+        for entry in std::fs::read_dir(&self.data_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            let canonical_root = std::fs::canonicalize(&self.data_dir)?;
+            if canonical_root != root {
+                return Err(FsError::Escape(self.data_dir.display().to_string()));
+            }
+            let file_type = entry.file_type()?;
+            if path == db_path {
+                continue;
+            }
+            if file_type.is_file()
+                && matches!(
+                    path.file_name().and_then(|name| name.to_str()),
+                    Some(".gitkeep" | "chatgpt.db-wal" | "chatgpt.db-shm" | "chatgpt.db-journal")
+                )
+            {
+                continue;
+            }
+            // A root-level symlink is unlinked, never traversed by
+            // `remove_dir_all`; its target is outside this cleanup boundary.
             if file_type.is_dir() {
+                let canonical = std::fs::canonicalize(&path)?;
+                if !canonical.starts_with(&root) {
+                    return Err(FsError::Escape(path.display().to_string()));
+                }
                 std::fs::remove_dir_all(&path)?;
             } else {
                 std::fs::remove_file(&path)?;
@@ -234,6 +304,22 @@ mod tests {
 
         assert!(outside.join("keep.png").exists());
         assert!(!root.join("link").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn image_folder_rejects_symlink_to_external_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("output");
+        let outside = temp.path().join("outside");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("images")).unwrap();
+
+        let error = Filesystem::with_data_dir(&root)
+            .image_folder()
+            .expect_err("images symlink should not escape the data directory");
+        assert!(matches!(error, FsError::Escape(_)));
     }
 
     #[test]

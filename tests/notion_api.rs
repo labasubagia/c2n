@@ -173,7 +173,7 @@ async fn send_upload_400_is_treated_as_already_uploaded() {
 }
 
 #[tokio::test]
-async fn retries_page_creation_with_the_same_upload_id() {
+async fn reconciles_an_ambiguous_page_creation_error() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/file_uploads"))
@@ -191,22 +191,34 @@ async fn retries_page_creation_with_the_same_upload_id() {
     Mock::given(method("POST"))
         .and(path("/v1/pages"))
         .respond_with(ResponseTemplate::new(500).set_body_string("transient"))
-        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!("/v1/databases/{DB_ID}")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data_sources": [{"id": "ds1"}]
+        })))
         .mount(&server)
         .await;
     Mock::given(method("POST"))
-        .and(path("/v1/pages"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"id": "page-1"})))
+        .and(path("/v1/data_sources/ds1/query"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "results": [{
+                "properties": {"Name": {"title": [{"text": {"content": "image.png"}}]}}
+            }]
+        })))
         .mount(&server)
         .await;
 
     let (_store_temp, store) = store();
     let client = NotionClient::with_base_url(context(), store, server.uri()).unwrap();
     let (_temp, file_path) = png_file();
-    client
+    let response = client
         .add_page_to_db(DB_ID, &file_path, "prompt")
         .await
-        .unwrap();
+        .expect("existing page should reconcile the ambiguous response");
+    assert_eq!(response["reconciled"], true);
+    assert_eq!(response["name"], "image.png");
 
     let requests = server.received_requests().await.unwrap();
     assert_eq!(
@@ -223,18 +235,13 @@ async fn retries_page_creation_with_the_same_upload_id() {
             .count(),
         1
     );
-    let page_requests = requests
-        .iter()
-        .filter(|request| request.url.path() == "/v1/pages")
-        .collect::<Vec<_>>();
-    assert_eq!(page_requests.len(), 2);
-    for request in page_requests {
-        let body: Value = serde_json::from_slice(&request.body).unwrap();
-        assert_eq!(
-            body["properties"]["Image"]["files"][0]["file_upload"]["id"],
-            "upload-1"
-        );
-    }
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.url.path() == "/v1/pages")
+            .count(),
+        1
+    );
 }
 
 #[tokio::test]

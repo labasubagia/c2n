@@ -285,8 +285,11 @@ flowchart TD
      ~~~
 
    - CRLF and CR are normalized to LF before building the body.
-4. The page request is retried with the same upload ID, never by re-running the
-   entire upload sequence.
+4. Page-creation requests are not retried after ambiguous server or transport
+   failures, since Notion may have created the page before the response was
+   lost. The client immediately queries for the page title to reconcile the
+   result; if that check cannot prove success, it returns the original failure
+   for safe retry on a later sync.
 
 Duplicate checks query each Notion data source:
 
@@ -320,13 +323,14 @@ Accounts without any data render `-` in all four timestamp columns.
 
 ### 4.4 Maintenance Commands
 
-- **`img clear`**: removes entries under `output/` except the database,
-  `chatgpt.db-wal`, `chatgpt.db-shm`, `chatgpt.db-journal`, and `.gitkeep`.
+- **`img clear`**: dry-runs by default; with `--yes`, removes entries under
+  `output/` except the database, `chatgpt.db-wal`, `chatgpt.db-shm`,
+  `chatgpt.db-journal`, and `.gitkeep`.
 - **`db backup <TARGET>`**: uses `rusqlite::backup::Backup` to produce a
   consistent snapshot. Parent directories are created.
-- **`db restore <SOURCE>`**: uses the SQLite backup API into the live
-  connection, then runs `PRAGMA wal_checkpoint(TRUNCATE)`. This avoids replacing
-  the database file underneath open handles.
+- **`db restore <SOURCE>`**: dry-runs by default; with `--yes`, uses the SQLite
+  backup API into the live connection, then runs `PRAGMA wal_checkpoint(TRUNCATE)`.
+  This avoids replacing the database file underneath open handles.
 - **`library delete [QUERY]`**: dry-runs by default and prints a count. With
   `--yes`, deletes matching images concurrently and prints the remaining count.
   A blank query is rejected instead of being treated as “all images”. Deletes
@@ -392,7 +396,7 @@ Tests target public behavior:
   - library pagination and SSE deletion
   - `Retry-After` handling and the 10-attempt cap
   - multipart upload and page payload shape
-  - page-creation retry with the same upload ID
+  - ambiguous page-creation failures are reconciled by title check without retry
   - 400 “already uploaded” fallback
   - data-source cache reuse and fail-closed empty data sources
 - The sync pipeline is tested with injected `ChatGptApi`/`NotionApi` fakes and

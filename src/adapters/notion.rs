@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use crate::adapters::sqlite::{NotionCache, StoreError};
 use crate::domain::models::{DataSource, NotionContext};
 use crate::shared::constants::NOTION_BASE_URL;
-use crate::shared::http::{HttpError, build_client, ensure_success, retry_http};
+use crate::shared::http::{HttpError, build_client, ensure_success, retry_http, retry_http_with};
 
 #[derive(Debug, thiserror::Error)]
 pub enum NotionError {
@@ -331,19 +331,63 @@ impl NotionApi for NotionClient {
         });
         let url = format!("{}/v1/pages", self.base_url);
 
-        retry_http(|| async {
-            let response = self
-                .http
-                .post(&url)
-                .headers(self.headers.clone())
-                .json(&payload)
-                .send()
-                .await?;
-            let response = ensure_success(response, Method::POST).await?;
-            Ok(response.json::<Value>().await?)
-        })
+        match retry_http_with(
+            || async {
+                let response = self
+                    .http
+                    .post(&url)
+                    .headers(self.headers.clone())
+                    .json(&payload)
+                    .send()
+                    .await?;
+                let response = ensure_success(response, Method::POST).await?;
+                Ok(response.json::<Value>().await?)
+            },
+            |error| {
+                matches!(
+                    error,
+                    HttpError::Status {
+                        status: StatusCode::TOO_MANY_REQUESTS,
+                        ..
+                    }
+                )
+            },
+        )
         .await
-        .map_err(NotionError::from)
+        {
+            Ok(page) => Ok(page),
+            Err(error) if is_ambiguous_page_create_error(&error) => {
+                match self.is_page_exists_in_db(db_id, &file_name).await {
+                    Ok(true) => {
+                        tracing::warn!(
+                            file_name,
+                            "page creation response was ambiguous; found the page during reconciliation"
+                        );
+                        Ok(json!({"reconciled": true, "name": file_name}))
+                    }
+                    Ok(false) => Err(NotionError::Http(error)),
+                    Err(check_error) => {
+                        tracing::warn!(
+                            file_name,
+                            error = %check_error,
+                            "could not reconcile ambiguous page creation"
+                        );
+                        Err(NotionError::Http(error))
+                    }
+                }
+            }
+            Err(error) => Err(NotionError::Http(error)),
+        }
+    }
+}
+
+fn is_ambiguous_page_create_error(error: &HttpError) -> bool {
+    match error {
+        HttpError::Request(error) => {
+            error.is_timeout() || error.is_connect() || error.is_request() || error.is_body() || error.is_decode()
+        }
+        HttpError::Status { status, .. } => status.is_server_error(),
+        HttpError::Io(_) => false,
     }
 }
 

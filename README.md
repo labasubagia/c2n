@@ -151,14 +151,16 @@ c2n status --timezone Asia/Singapore
 Clean the output directory while preserving the database:
 
 ```bash
-c2n img clear
+c2n img clear          # dry run
+c2n img clear --yes    # actually remove files
 ```
 
 Back up and restore the database:
 
 ```bash
 c2n db backup ./backups/chatgpt.db
-c2n db restore ./backups/chatgpt.db
+c2n db restore ./backups/chatgpt.db          # dry run
+c2n db restore ./backups/chatgpt.db --yes    # actually restore
 ```
 
 Dry-run a library deletion, then actually delete:

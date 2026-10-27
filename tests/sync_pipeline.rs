@@ -33,6 +33,8 @@ struct MockChatGpt {
     library_images: usize,
     delete_should_fail: AtomicBool,
     already_deleted: AtomicBool,
+    symlink_before_discovery: Mutex<Option<PathBuf>>,
+    symlink_on_delete: Mutex<Option<PathBuf>>,
 }
 
 #[async_trait]
@@ -56,6 +58,12 @@ impl ChatGptApi for MockChatGpt {
         if self.delete_should_fail.load(Ordering::SeqCst) {
             return Err(HttpError::Io(std::io::Error::other("delete failed")));
         }
+        #[cfg(unix)]
+        if let Some(target) = self.symlink_on_delete.lock().unwrap().take() {
+            let images = target.parent().unwrap().join("output/images");
+            std::fs::remove_dir_all(&images)?;
+            std::os::unix::fs::symlink(target, &images)?;
+        }
         if self.already_deleted.load(Ordering::SeqCst) {
             return Ok(DeleteConversationResult::AlreadyDeleted);
         }
@@ -63,6 +71,12 @@ impl ChatGptApi for MockChatGpt {
     }
 
     async fn get_image_generations(&self, _limit: usize) -> Result<Vec<ImageGenItem>, HttpError> {
+        #[cfg(unix)]
+        if let Some(target) = self.symlink_before_discovery.lock().unwrap().take() {
+            let images = target.parent().unwrap().join("output/images");
+            std::fs::remove_dir_all(&images)?;
+            std::os::unix::fs::symlink(target, images)?;
+        }
         Ok(vec![ImageGenItem {
             id: "img1".to_owned(),
             message_id: "image-node".to_owned(),
@@ -221,6 +235,8 @@ fn test_context() -> TestContext {
             library_images: 3,
             delete_should_fail: AtomicBool::new(false),
             already_deleted: AtomicBool::new(false),
+            symlink_before_discovery: Mutex::new(None),
+            symlink_on_delete: Mutex::new(None),
         }),
         notion: Arc::new(MockNotion {
             headers: HeaderMap::new(),
@@ -246,6 +262,60 @@ fn options() -> SyncOptions {
 
 fn image_path(context: &TestContext) -> PathBuf {
     context.filesystem.image_folder().unwrap().join("img1.png")
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn rejects_image_directory_symlink_created_during_discovery() {
+    let context = test_context();
+    let outside = context._temp.path().join("outside");
+    std::fs::create_dir_all(&outside).unwrap();
+    *context.chatgpt.symlink_before_discovery.lock().unwrap() = Some(outside.clone());
+    let reporter = Reporter::new(Verbosity::Quiet, None);
+
+    sync(
+        &options(),
+        &context.config,
+        context.store.as_ref(),
+        &context.filesystem,
+        context.chatgpt.as_ref(),
+        context.notion.as_ref(),
+        &reporter,
+    )
+    .await
+    .unwrap();
+
+    assert!(!outside.join("img1.png").exists());
+    assert!(context.notion.adds.lock().unwrap().is_empty());
+    assert!(context.chatgpt.deletes.lock().unwrap().is_empty());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn cleanup_does_not_follow_image_directory_symlink_swapped_after_delete() {
+    let context = test_context();
+    let outside = context._temp.path().join("outside");
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("img1.png"), b"keep outside data").unwrap();
+    *context.chatgpt.symlink_on_delete.lock().unwrap() = Some(outside.clone());
+    let reporter = Reporter::new(Verbosity::Quiet, None);
+
+    sync(
+        &options(),
+        &context.config,
+        context.store.as_ref(),
+        &context.filesystem,
+        context.chatgpt.as_ref(),
+        context.notion.as_ref(),
+        &reporter,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        std::fs::read(outside.join("img1.png")).unwrap(),
+        b"keep outside data"
+    );
 }
 
 #[tokio::test]

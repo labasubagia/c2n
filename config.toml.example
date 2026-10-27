@@ -1,0 +1,41 @@
+# c2n configuration example.
+# Copy this file to config.toml and fill in your credentials.
+
+[shared]
+# Global fallbacks shared by every account.
+user_agent = "Mozilla/5.0 ..."
+# Base64-encoded raw Cookie header value.
+cookie_string_base64 = "b2FpLWRpZD0..."
+
+# Optional global overrides:
+# notion_database_id = "your_default_database_id"
+# history_folder = "~/data/chatgpt/image_history"
+# image_folder = "~/Pictures/chatgpt"
+# delete_library_queries = ["query1", "query2"]
+# remove_all_library_images = false
+# conversation_delay = 2.0
+
+[notion]
+api_key = "secret_xxx"
+database_id = "your_default_database_id"
+# Notion API version. Defaults to 2025-09-03.
+# version = "2025-09-03"
+
+# Account keys MUST be valid email addresses. The key is written into every
+# uploaded Notion page body as the **Email:** line.
+[accounts."account_a@example.com"]
+# ChatGPT Authorization header value WITHOUT the leading "Bearer ".
+authorization_token = "eyJhbGciOi..."
+
+# Optional per-account overrides:
+# notion_database_id = "optional_account_specific_database_id"
+# user_agent = "Mozilla/5.0 ..."
+# cookie_string_base64 = "cGVyLWFjY291bnQtY29va2ll..."
+# history_folder = "~/my_chatgpt/history"
+# image_folder = "~/my_chatgpt/images"
+# delete_library_queries = ["query1"]
+# remove_all_library_images = false
+# conversation_delay = 2.0
+
+[accounts."account_b@example.com"]
+authorization_token = "eyJhbGciOi..."

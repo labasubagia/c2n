@@ -304,11 +304,10 @@ Options:
 Output columns:
 
 - **Account**
-- **Next Wait**: when the oldest active generation leaves the 24-hour window.
-- **Next Cooldown**: time until `Next Wait`.
-- **Fully Ready In**: when the newest active generation leaves the window.
-- **Total Wait**: span between the first and last active generation.
-- **Ready Generate?**: `✅`, `⚠️ (x/y to wait)`, or `❌ (x/y to wait)`.
+- **First Img Yesterday**: first image created yesterday (local time), `-` if none.
+- **Last Img Yesterday**: last image created yesterday (local time), `-` if none.
+- **First Img Today**: first image created today (local time), `-` if none.
+- **Last Img Today**: last image created today (local time), `-` if none.
 
 ### 4.3 `img clear`
 

@@ -26,11 +26,9 @@ pub struct DataSource {
     pub id: String,
 }
 
-/// Aggregate activity for one account on one local calendar day.
+/// Day-range first/last activity for one account on one local calendar day.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActivityStats {
-    pub total: i64,
-    pub active_count: i64,
     pub first_active: Option<String>,
     pub last_active: Option<String>,
 }

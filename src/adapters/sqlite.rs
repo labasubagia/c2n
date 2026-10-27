@@ -89,7 +89,6 @@ pub trait GenerationStore: Send + Sync {
         account: &str,
         date_start: &str,
         date_end: &str,
-        cooldown_threshold: &str,
     ) -> Result<Option<ActivityStats>, StoreError>;
     fn is_uploaded(&self, account: &str, id: &str) -> Result<bool, StoreError>;
     fn backup(&self, target: &Path) -> Result<PathBuf, StoreError>;
@@ -308,52 +307,33 @@ impl GenerationStore for SqliteStore {
         account: &str,
         date_start: &str,
         date_end: &str,
-        cooldown_threshold: &str,
     ) -> Result<Option<ActivityStats>, StoreError> {
         let connection = self.conn()?;
         let stats = connection.query_row(
             r#"
             SELECT
-                COUNT(*) as total,
-                COALESCE(SUM(
-                    CASE WHEN julianday(created_at) > julianday(?) THEN 1 ELSE 0 END
-                ), 0) as active_count,
-                MIN(
-                    CASE WHEN julianday(created_at) > julianday(?) THEN created_at END
-                ) as first_active,
-                MAX(
-                    CASE WHEN julianday(created_at) > julianday(?) THEN created_at END
-                ) as last_active
+                MIN(created_at) as first_active,
+                MAX(created_at) as last_active
             FROM image_generations
             WHERE account = ?
               AND julianday(created_at) >= julianday(?)
               AND julianday(created_at) < julianday(?)
             "#,
-            params![
-                cooldown_threshold,
-                cooldown_threshold,
-                cooldown_threshold,
-                account,
-                date_start,
-                date_end,
-            ],
+            params![account, date_start, date_end],
             |row| {
                 Ok(ActivityStats {
-                    total: row.get(0)?,
-                    active_count: row.get(1)?,
-                    first_active: row.get(2)?,
-                    last_active: row.get(3)?,
+                    first_active: row.get(0)?,
+                    last_active: row.get(1)?,
                 })
             },
         )?;
 
-        if stats.total == 0 {
+        if stats.first_active.is_none() {
             Ok(None)
         } else {
             Ok(Some(stats))
         }
     }
-
     fn is_uploaded(&self, account: &str, id: &str) -> Result<bool, StoreError> {
         let connection = self.conn()?;
         let found = connection
@@ -716,14 +696,15 @@ mod tests {
                 "user@example.com",
                 "2026-01-02T00:00:00.000000Z",
                 "2026-01-03T00:00:00.000000Z",
-                "2026-01-02T00:00:00.000000Z",
             )
             .unwrap()
             .unwrap();
-        assert_eq!(stats.total, 2);
-        assert_eq!(stats.active_count, 1);
         assert_eq!(
             stats.first_active.as_deref(),
+            Some("2026-01-02T00:00:00+00:00")
+        );
+        assert_eq!(
+            stats.last_active.as_deref(),
             Some("2026-01-02T12:00:00.000000Z")
         );
     }
@@ -748,15 +729,16 @@ mod tests {
                 "user@example.com",
                 "2026-01-01T00:00:00+00:00",
                 "2026-01-02T00:00:00+00:00",
-                "2026-01-01T00:00:00+00:00",
             )
             .unwrap()
             .unwrap();
-        assert_eq!(stats.total, 2);
-        assert_eq!(stats.active_count, 2);
         assert_eq!(
             stats.first_active.as_deref(),
             Some("2026-01-01T10:00:00+00:00")
+        );
+        assert_eq!(
+            stats.last_active.as_deref(),
+            Some("2026-01-01T12:00:00+00:00")
         );
     }
 }

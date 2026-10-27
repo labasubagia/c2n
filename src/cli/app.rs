@@ -337,18 +337,7 @@ fn run_account_status(args: AccountStatusArgs) -> Result<()> {
         .format("%Y-%m-%d %H:%M:%S");
     println!("Current Time: {current_time} ({})", timezone.name());
 
-    print_activity_table(
-        &report.today,
-        &format!("Today ({}/{})", report.today.len(), report.total_accounts),
-    );
-    print_activity_table(
-        &report.yesterday,
-        &format!(
-            "Yesterday ({}/{})",
-            report.yesterday.len(),
-            report.total_accounts
-        ),
-    );
+    print_activity_table(&report.rows);
 
     Ok(())
 }
@@ -470,10 +459,9 @@ fn print_account_footer(
     ));
 }
 
-fn print_activity_table(rows: &[ActivityRow], title: &str) {
+fn print_activity_table(rows: &[ActivityRow]) {
     if rows.is_empty() {
-        println!("\n{title}");
-        println!("No accounts have data for this period.");
+        println!("\nNo accounts have data.");
         return;
     }
 
@@ -481,25 +469,22 @@ fn print_activity_table(rows: &[ActivityRow], title: &str) {
     table.load_style(UTF8_FULL);
     table.set_header(vec![
         "Account",
-        "Next Wait",
-        "Next Cooldown",
-        "Fully Ready In",
-        "Total Wait",
-        "Ready Generate?",
+        "First Img Yesterday",
+        "Last Img Yesterday",
+        "First Img Today",
+        "Last Img Today",
     ]);
     for row in rows {
         table.add_row(vec![
             row.account.clone(),
-            row.next_wait.clone(),
-            row.next_cooldown.clone(),
-            row.fully_ready_in.clone(),
-            row.total_wait.clone(),
-            row.ready_generate.clone(),
+            row.first_img_yesterday.clone(),
+            row.last_img_yesterday.clone(),
+            row.first_img_today.clone(),
+            row.last_img_today.clone(),
         ]);
     }
 
-    println!("\n{title}");
-    println!("{table}");
+    println!("\n{table}");
 }
 
 fn verbosity_for(command: &Command) -> Verbosity {

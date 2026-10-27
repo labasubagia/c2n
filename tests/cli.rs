@@ -10,16 +10,38 @@ fn help_lists_core_commands() {
         .arg("--help")
         .assert()
         .success()
+        .stdout(predicate::str::contains("img"))
+        .stdout(predicate::str::contains("db"))
+        .stdout(predicate::str::contains("library"));
+}
+
+#[test]
+fn img_help_lists_subcommands() {
+    Command::cargo_bin("c2n")
+        .unwrap()
+        .args(["img", "--help"])
+        .assert()
+        .success()
         .stdout(predicate::str::contains("sync"))
-        .stdout(predicate::str::contains("account-status"))
-        .stdout(predicate::str::contains("delete-library"));
+        .stdout(predicate::str::contains("status"))
+        .stdout(predicate::str::contains("clear"));
+}
+
+#[test]
+fn library_help_lists_delete_subcommand() {
+    Command::cargo_bin("c2n")
+        .unwrap()
+        .args(["library", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("delete"));
 }
 
 #[test]
 fn rejects_conflicting_verbosity_before_loading_config() {
     Command::cargo_bin("c2n")
         .unwrap()
-        .args(["sync", "--verbose", "--quiet"])
+        .args(["img", "sync", "--verbose", "--quiet"])
         .assert()
         .failure()
         .stderr(predicate::str::contains(
@@ -31,7 +53,7 @@ fn rejects_conflicting_verbosity_before_loading_config() {
 fn rejects_all_without_history_mode_before_loading_config() {
     Command::cargo_bin("c2n")
         .unwrap()
-        .args(["sync", "--all"])
+        .args(["img", "sync", "--all"])
         .assert()
         .failure()
         .stderr(predicate::str::contains(
@@ -43,7 +65,7 @@ fn rejects_all_without_history_mode_before_loading_config() {
 fn rejects_blank_delete_library_query_before_loading_config() {
     Command::cargo_bin("c2n")
         .unwrap()
-        .args(["delete-library", "   ", "--yes"])
+        .args(["library", "delete", "   ", "--yes"])
         .assert()
         .failure()
         .stderr(predicate::str::contains(
@@ -77,7 +99,7 @@ fn creates_config_data_and_image_dirs() {
         .unwrap()
         .env("C2N_CONFIG_DIR", &cfg)
         .env("C2N_DATA_DIR", &data)
-        .args(["account-status"])
+        .args(["img", "status"])
         .assert()
         .failure();
     assert!(cfg.is_dir());

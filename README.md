@@ -88,88 +88,88 @@ Show help:
 
 ```bash
 c2n --help
-c2n sync --help
+c2n img sync --help
 ```
 
 Upload recent generations for one account:
 
 ```bash
-c2n sync --account personal@example.com --limit 100
+c2n img sync --account personal@example.com --limit 100
 ```
 
 Process every configured account sequentially:
 
 ```bash
-c2n sync
+c2n img sync
 ```
 
 Replay non-uploaded items from the local database (last 3 days):
 
 ```bash
-c2n sync --from-history
+c2n img sync --from-history
 ```
 
 Replay all non-uploaded history:
 
 ```bash
-c2n sync --from-history --all
+c2n img sync --from-history --all
 ```
 
 Audit and repair uploaded items against Notion (last 3 days):
 
 ```bash
-c2n sync --verify-history
+c2n img sync --verify-history
 ```
 
 Audit all uploaded history:
 
 ```bash
-c2n sync --verify-history --all
+c2n img sync --verify-history --all
 ```
 
 Hide conversations after every image in them is verified uploaded:
 
 ```bash
-c2n sync --delete-conversation
+c2n img sync --delete-conversation
 ```
 
 Delete library images matching a query (dry run without `--yes`):
 
 ```bash
-c2n delete-library "old prompt"
+c2n library delete "old prompt"
 ```
 
 Delete all library images (dry run without `--yes`):
 
 ```bash
-c2n delete-library
+c2n library delete
 ```
 
 Check account cooldowns:
 
 ```bash
-c2n account-status --timezone Asia/Singapore
+c2n img status --timezone Asia/Singapore
 ```
 
 Clean the output directory while preserving the database:
 
 ```bash
-c2n clean-output-path
+c2n img clear
 ```
 
 Back up and restore the database:
 
 ```bash
-c2n backup-db ./backups/chatgpt.db
-c2n restore-db ./backups/chatgpt.db
+c2n db backup ./backups/chatgpt.db
+c2n db restore ./backups/chatgpt.db
 ```
 
 Dry-run a library deletion, then actually delete:
 
 ```bash
-c2n delete-library "old prompt"
-c2n delete-library "old prompt" --yes
-c2n delete-library --yes          # all library images
+c2n library delete "old prompt"
+c2n library delete "old prompt" --yes
+c2n library delete --yes          # all library images
 ```
 
 ## Behavior and safety notes
@@ -182,7 +182,7 @@ c2n delete-library --yes          # all library images
 - The SQLite database and images default to the platform data dir
   (`~/.local/share/c2n/` on Linux; the config dir on macOS/Windows).
 - Development overrides: `C2N_CONFIG_DIR` and `C2N_DATA_DIR` (env wins). Example:
-  `C2N_CONFIG_DIR=./ C2N_DATA_DIR=./output c2n sync`.
+  `C2N_CONFIG_DIR=./ C2N_DATA_DIR=./output c2n img sync`.
   Both values are relative to the current working directory.
 - Produced files: `config.toml` (your input configuration), `chatgpt.db`
   (SQLite state: downloaded generations, `uploaded_at`, data sources, history),
@@ -193,13 +193,13 @@ c2n delete-library --yes          # all library images
   enabled by default.
 - `--no-check-notion-api` trusts the local `uploaded_at` marker. The default is
   to query Notion to prevent duplicates when local state is stale.
-- `sync` always uploads and requires Notion credentials and a database ID.
+- `img sync` always uploads and requires Notion credentials and a database ID.
 
 ### Conversation deletion
 
 `--delete-conversation` is deliberately conservative:
 
-- It is only available on `sync`.
+- It is only available on `img sync`.
 - It is ignored in history replay mode.
 - A conversation is hidden only when every image in it was uploaded or verified
   already uploaded.
@@ -210,7 +210,7 @@ c2n delete-library --yes          # all library images
 
 ### Library deletion
 
-- `delete-library` is a dry run unless `--yes` is supplied.
+- `library delete` is a dry run unless `--yes` is supplied.
 - `--max-concurrent` controls concurrent delete requests (default 10).
 
 ### Prompt metadata
@@ -241,7 +241,7 @@ c2n delete-library --yes          # all library images
   shortcut for `--from-history --check-notion-api` in intent.
 - `--all` removes the 3-day history window and requires `--from-history` or
   `--verify-history`.
-- `--timezone` is accepted for compatibility. `account-status` uses it for date
+- `--timezone` is accepted for compatibility. `img status` uses it for date
   boundaries; history filtering uses absolute time.
 
 ## Development

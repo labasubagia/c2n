@@ -137,7 +137,7 @@ checks. Expired rows are deleted lazily.
 
 ## 4. Feature Flows
 
-### 4.1 Image Sync Pipeline (`sync`)
+### 4.1 Image Sync Pipeline (`img sync`)
 
 #### 4.1.1 Discovery
 
@@ -305,7 +305,7 @@ file name. If the database exposes no data sources, the duplicate check fails
 closed instead of uploading without protection. Corrupt cached data-source JSON
 is discarded and refreshed.
 
-### 4.3 Account Status (`account-status`)
+### 4.3 Account Status (`img status`)
 
 1. Resolve the requested IANA timezone, then fall back to the system timezone and
    finally UTC.
@@ -331,14 +331,14 @@ is marked ready, matching the original tool's behavior.
 
 ### 4.4 Maintenance Commands
 
-- **`clean-output-path`**: removes entries under `output/` except the database,
+- **`img clear`**: removes entries under `output/` except the database,
   `chatgpt.db-wal`, `chatgpt.db-shm`, `chatgpt.db-journal`, and `.gitkeep`.
-- **`backup-db <TARGET>`**: uses `rusqlite::backup::Backup` to produce a
+- **`db backup <TARGET>`**: uses `rusqlite::backup::Backup` to produce a
   consistent snapshot. Parent directories are created.
-- **`restore-db <SOURCE>`**: uses the SQLite backup API into the live
+- **`db restore <SOURCE>`**: uses the SQLite backup API into the live
   connection, then runs `PRAGMA wal_checkpoint(TRUNCATE)`. This avoids replacing
   the database file underneath open handles.
-- **`delete-library [QUERY]`**: dry-runs by default and prints a count. With
+- **`library delete [QUERY]`**: dry-runs by default and prints a count. With
   `--yes`, deletes matching images concurrently and prints the remaining count.
   A blank query is rejected instead of being treated as “all images”. Deletes
   use the ChatGPT `delete_stream` endpoint, parse SSE `data:` events, and show a
@@ -377,7 +377,7 @@ is marked ready, matching the original tool's behavior.
   into memory.
 - PNG metadata edits parse only chunk headers and write through a temporary
   file.
-- `clean-output-path` preserves the database and WAL/SHM/journal files.
+- `img clear` preserves the database and WAL/SHM/journal files.
 
 ### 5.4 Path Safety
 

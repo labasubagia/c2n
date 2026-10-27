@@ -175,8 +175,8 @@ authorization_token = "eyJhbGciOiJSUzI1_other..."
 - Per-account `user_agent`, `cookie_string_base64`, `notion_database_id`,
   `history_folder`, `image_folder`, and `conversation_delay` override the shared
   values. Blank per-account strings fall back to the shared value.
-- `notion.api_key` is required for `sync`.
-- `notion.database_id` is required for `sync` unless `--db-id` or
+- `notion.api_key` is required for `img sync`.
+- `notion.database_id` is required for `img sync` unless `--db-id` or
   `[shared].notion_database_id` supplies one.
 - Every account key must be a valid email address.
 
@@ -199,7 +199,7 @@ Development overrides (the environment wins over the defaults):
 Example dev workflow from the project root:
 
 ```bash
-C2N_CONFIG_DIR=./ C2N_DATA_DIR=./output c2n sync
+C2N_CONFIG_DIR=./ C2N_DATA_DIR=./output c2n img sync
 ```
 
 Both values are relative to the current working directory.
@@ -225,17 +225,17 @@ with `cargo run --`.
 
 ```bash
 c2n --help
-c2n sync --help
-c2n account-status --help
-c2n delete-library --help
+c2n img sync --help
+c2n img status --help
+c2n library delete --help
 ```
 
-### 4.1 `sync`
+### 4.1 `img sync`
 
 Synchronizes images from one or more ChatGPT accounts into Notion.
 
 ```bash
-c2n sync [OPTIONS]
+c2n img sync [OPTIONS]
 ```
 
 Options:
@@ -260,7 +260,7 @@ Options:
   `--from-history` or `--verify-history`.
 - `--no-cache`: Fetch fresh live data and skip the local existence cache for the
   current discovery batch.
-- `--timezone <IANA>`: Accepted for compatibility. `account-status` uses it for
+- `--timezone <IANA>`: Accepted for compatibility. `img status` uses it for
   date boundaries; history filtering uses absolute time.
 - `--conversation-delay <SECONDS>`: Delay between conversations. Defaults to the
   account/shared config value, or `2.0`.
@@ -272,34 +272,34 @@ Examples:
 
 ```bash
 # One account, recent 100 items
-c2n sync --account personal@example.com --limit 100
+c2n img sync --account personal@example.com --limit 100
 
 # Every configured account
-c2n sync
+c2n img sync
 
 # Replay non-uploaded history from the last 3 days
-c2n sync --from-history
+c2n img sync --from-history
 
 # Replay all non-uploaded history
-c2n sync --from-history --all
+c2n img sync --from-history --all
 
 # Audit and repair uploaded history against Notion
-c2n sync --verify-history --all
+c2n img sync --verify-history --all
 
 # Hide conversations only after verified uploads
-c2n sync --delete-conversation
+c2n img sync --delete-conversation
 
 
 # Log failures for later inspection
-c2n sync --fail-log output/failures.jsonl
+c2n img sync --fail-log output/failures.jsonl
 ```
 
-### 4.2 `account-status`
+### 4.2 `img status`
 
 Shows daily usage and 24-hour cooldown state for each account.
 
 ```bash
-c2n account-status --timezone Asia/Singapore
+c2n img status --timezone Asia/Singapore
 ```
 
 Options:
@@ -316,7 +316,7 @@ Output columns:
 - **Total Wait**: span between the first and last active generation.
 - **Ready Generate?**: `✅`, `⚠️ (x/y to wait)`, or `❌ (x/y to wait)`.
 
-### 4.3 `clean-output-path`
+### 4.3 `img clear`
 
 Removes downloaded images and other temporary entries under `output/` while
 preserving:
@@ -328,40 +328,40 @@ preserving:
 - `output/.gitkeep`
 
 ```bash
-c2n clean-output-path
+c2n img clear
 ```
 
-### 4.4 `backup-db`
+### 4.4 `db backup`
 
 Copies the local database to a target path using the SQLite backup API. This
 produces a consistent snapshot even while another process writes to the
 database.
 
 ```bash
-c2n backup-db ./backups/chatgpt.db
-c2n backup-db /home/user/backups/chatgpt.db
+c2n db backup ./backups/chatgpt.db
+c2n db backup /home/user/backups/chatgpt.db
 ```
 
 Parent directories are created automatically.
 
-### 4.5 `restore-db`
+### 4.5 `db restore`
 
 Restores the local database from a backup using the SQLite backup API into the
 live connection. The target database is not replaced underneath open handles.
 
 ```bash
-c2n restore-db ./backups/chatgpt.db
-c2n restore-db /home/user/backups/chatgpt.db
+c2n db restore ./backups/chatgpt.db
+c2n db restore /home/user/backups/chatgpt.db
 ```
 
 Stop scheduled sync jobs before restoring to avoid interleaving writes.
 
-### 4.6 `delete-library`
+### 4.6 `library delete`
 
 Removes images from the ChatGPT image library.
 
 ```bash
-c2n delete-library [QUERY] [OPTIONS]
+c2n library delete [QUERY] [OPTIONS]
 ```
 
 Arguments and options:
@@ -380,13 +380,13 @@ Examples:
 
 ```bash
 # Dry run: count images matching the query
-c2n delete-library "old prompt"
+c2n library delete "old prompt"
 
 # Delete images matching the query
-c2n delete-library "old prompt" --yes
+c2n library delete "old prompt" --yes
 
 # Delete all library images
-c2n delete-library --yes
+c2n library delete --yes
 ```
 
 ---
@@ -406,7 +406,7 @@ The only execution mode processes conversations one at a time, end to end:
 4. Wait `--conversation-delay` seconds before the next conversation.
 
 ```bash
-c2n sync --conversation-delay 2.0
+c2n img sync --conversation-delay 2.0
 ```
 
 ### 5.2 Retry Policy
@@ -421,7 +421,7 @@ Retry diagnostics are emitted through `tracing`. Set `RUST_LOG` to override the
 default filter:
 
 ```bash
-RUST_LOG=c2n=debug c2n sync
+RUST_LOG=c2n=debug c2n img sync
 ```
 
 `--verbose` enables per-file output; `--quiet` suppresses non-warning output.
@@ -435,7 +435,7 @@ RUST_LOG=c2n=debug c2n sync
 Run a sync every hour:
 
 ```cron
-0 * * * * cd /home/john/tmp/c2n && /home/john/.local/bin/c2n sync >> /home/john/tmp/c2n/output/cron.log 2>&1
+0 * * * * cd /home/john/tmp/c2n && /home/john/.local/bin/c2n img sync >> /home/john/tmp/c2n/output/cron.log 2>&1
 ```
 
 Use absolute paths in cron entries. Ensure the user running cron can read
@@ -454,14 +454,14 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/home/john/tmp/c2n
-ExecStart=/home/john/.local/bin/c2n sync
+ExecStart=/home/john/.local/bin/c2n img sync
 ```
 
 Create `~/.config/systemd/user/c2n-sync.timer`:
 
 ```ini
 [Unit]
-Description=Run c2n sync every hour
+Description=Run c2n img sync every hour
 
 [Timer]
 OnCalendar=hourly
@@ -490,7 +490,7 @@ journalctl --user -u c2n-sync.service -f
 ## 7. Safety Checklist
 
 - Keep `config.toml` private. It contains ChatGPT cookies and Notion tokens.
-- Use `c2n sync --from-history` for a local replay trial run.
+- Use `c2n img sync --from-history` for a local replay trial run.
 - Use `--verify-history` after restoring a database or changing Notion
   databases.
 - Leave `--check-notion-api` enabled unless you intentionally trust local state.

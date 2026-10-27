@@ -11,8 +11,6 @@ cookie_string_base64 = "b2FpLWRpZD0..."
 # notion_database_id = "your_default_database_id"
 # history_folder = "~/data/chatgpt/image_history"
 # image_folder = "~/Pictures/chatgpt"
-# delete_library_queries = ["query1", "query2"]
-# remove_all_library_images = false
 # conversation_delay = 2.0
 
 [notion]
@@ -33,8 +31,6 @@ authorization_token = "eyJhbGciOi..."
 # cookie_string_base64 = "cGVyLWFjY291bnQtY29va2ll..."
 # history_folder = "~/my_chatgpt/history"
 # image_folder = "~/my_chatgpt/images"
-# delete_library_queries = ["query1"]
-# remove_all_library_images = false
 # conversation_delay = 2.0
 
 [accounts."account_b@example.com"]

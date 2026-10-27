@@ -55,8 +55,6 @@ user_agent = "Mozilla/5.0 ..."
 cookie_string_base64 = "b2FpLWRpZD0..."
 # Optional overrides:
 # image_folder = "~/Pictures/chatgpt"
-# delete_library_queries = ["old prompt", "scratch"]
-# remove_all_library_images = false
 # conversation_delay = 2.0
 
 [notion]
@@ -135,28 +133,16 @@ Hide conversations after every image in them is verified uploaded:
 c2n sync --delete-conversation
 ```
 
-Preview configured library-query deletion after upload:
+Delete library images matching a query (dry run without `--yes`):
 
 ```bash
-c2n sync --delete-library
+c2n delete-library "old prompt"
 ```
 
-Delete configured library queries after upload:
+Delete all library images (dry run without `--yes`):
 
 ```bash
-c2n sync --delete-library --yes
-```
-
-Preview deletion of the entire ChatGPT image library after upload:
-
-```bash
-c2n sync --delete-library-all
-```
-
-Delete the entire ChatGPT image library after upload:
-
-```bash
-c2n sync --delete-library-all --yes
+c2n delete-library
 ```
 
 Check account cooldowns:
@@ -226,13 +212,6 @@ c2n delete-library --yes          # all library images
 
 - `delete-library` is a dry run unless `--yes` is supplied.
 - `--max-concurrent` controls concurrent delete requests (default 10).
-- `sync --delete-library` uses `delete_library_queries` from the config.
-  `--delete-library-all` targets every library image.
-- Post-run library cleanup is also a dry run unless `--yes` is supplied.
-- `remove_all_library_images = true` makes `--delete-library` behave like
-  `--delete-library-all`.
-- Blank configured queries are ignored; delete all images explicitly with
-  `--delete-library-all` or `remove_all_library_images = true`.
 
 ### Prompt metadata
 

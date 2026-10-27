@@ -76,10 +76,6 @@ pub struct SharedConfig {
     #[serde(default)]
     pub image_folder: Option<String>,
     #[serde(default)]
-    pub delete_library_queries: Vec<String>,
-    #[serde(default)]
-    pub remove_all_library_images: bool,
-    #[serde(default)]
     pub conversation_delay: Option<f64>,
 }
 
@@ -98,10 +94,6 @@ pub struct AccountConfig {
     pub history_folder: Option<String>,
     #[serde(default)]
     pub image_folder: Option<String>,
-    #[serde(default)]
-    pub delete_library_queries: Vec<String>,
-    #[serde(default)]
-    pub remove_all_library_images: bool,
     #[serde(default)]
     pub conversation_delay: Option<f64>,
 }
@@ -126,8 +118,6 @@ pub struct ResolvedConfig {
     pub notion: NotionConfig,
     pub history_folder: Option<String>,
     pub image_folder: Option<String>,
-    pub delete_library_queries: Vec<String>,
-    pub remove_all_library_images: bool,
     pub conversation_delay: Option<f64>,
 }
 

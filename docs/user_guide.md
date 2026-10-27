@@ -227,7 +227,7 @@ with `cargo run --`.
 c2n --help
 c2n img sync --help
 c2n img status --help
-c2n library delete --help
+c2n img library delete --help
 ```
 
 ### 4.1 `img sync`
@@ -356,12 +356,12 @@ c2n db restore /home/user/backups/chatgpt.db
 
 Stop scheduled sync jobs before restoring to avoid interleaving writes.
 
-### 4.6 `library delete`
+### 4.6 `img library delete`
 
 Removes images from the ChatGPT image library.
 
 ```bash
-c2n library delete [QUERY] [OPTIONS]
+c2n img library delete [QUERY] [OPTIONS]
 ```
 
 Arguments and options:
@@ -380,13 +380,13 @@ Examples:
 
 ```bash
 # Dry run: count images matching the query
-c2n library delete "old prompt"
+c2n img library delete "old prompt"
 
 # Delete images matching the query
-c2n library delete "old prompt" --yes
+c2n img library delete "old prompt" --yes
 
 # Delete all library images
-c2n library delete --yes
+c2n img library delete --yes
 ```
 
 ---

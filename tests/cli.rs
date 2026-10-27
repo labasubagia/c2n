@@ -11,8 +11,7 @@ fn help_lists_core_commands() {
         .assert()
         .success()
         .stdout(predicate::str::contains("img"))
-        .stdout(predicate::str::contains("db"))
-        .stdout(predicate::str::contains("library"));
+        .stdout(predicate::str::contains("db"));
 }
 
 #[test]
@@ -24,14 +23,15 @@ fn img_help_lists_subcommands() {
         .success()
         .stdout(predicate::str::contains("sync"))
         .stdout(predicate::str::contains("status"))
-        .stdout(predicate::str::contains("clear"));
+        .stdout(predicate::str::contains("clear"))
+        .stdout(predicate::str::contains("library"));
 }
 
 #[test]
 fn library_help_lists_delete_subcommand() {
     Command::cargo_bin("c2n")
         .unwrap()
-        .args(["library", "--help"])
+        .args(["img", "library", "--help"])
         .assert()
         .success()
         .stdout(predicate::str::contains("delete"));
@@ -65,7 +65,7 @@ fn rejects_all_without_history_mode_before_loading_config() {
 fn rejects_blank_delete_library_query_before_loading_config() {
     Command::cargo_bin("c2n")
         .unwrap()
-        .args(["library", "delete", "   ", "--yes"])
+        .args(["img", "library", "delete", "   ", "--yes"])
         .assert()
         .failure()
         .stderr(predicate::str::contains(

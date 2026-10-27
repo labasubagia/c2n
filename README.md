@@ -21,7 +21,7 @@ the useful CLI surface and safety properties while using typed Rust APIs,
 - Optionally hide processed ChatGPT conversations with a fail-safe verification
   step.
 - Optionally remove images from the ChatGPT library, with dry-run defaults for
-  both the standalone `delete-library` command and post-run library cleanup.
+  both the standalone `img library delete` command and post-run library cleanup.
 - Back up and restore the SQLite database with the SQLite backup API.
 
 ## Requirements
@@ -136,13 +136,13 @@ c2n img sync --delete-conversation
 Delete library images matching a query (dry run without `--yes`):
 
 ```bash
-c2n library delete "old prompt"
+c2n img library delete "old prompt"
 ```
 
 Delete all library images (dry run without `--yes`):
 
 ```bash
-c2n library delete
+c2n img library delete
 ```
 
 Check account cooldowns:
@@ -167,9 +167,9 @@ c2n db restore ./backups/chatgpt.db
 Dry-run a library deletion, then actually delete:
 
 ```bash
-c2n library delete "old prompt"
-c2n library delete "old prompt" --yes
-c2n library delete --yes          # all library images
+c2n img library delete "old prompt"
+c2n img library delete "old prompt" --yes
+c2n img library delete --yes          # all library images
 ```
 
 ## Behavior and safety notes
@@ -210,7 +210,7 @@ c2n library delete --yes          # all library images
 
 ### Library deletion
 
-- `library delete` is a dry run unless `--yes` is supplied.
+- `img library delete` is a dry run unless `--yes` is supplied.
 - `--max-concurrent` controls concurrent delete requests (default 10).
 
 ### Prompt metadata

@@ -184,7 +184,7 @@ The product scope is divided into these functional pillars:
 
 ### 5.6 Library Maintenance
 
-- Provide `library delete [QUERY]` to remove images from the ChatGPT library.
+- Provide `img library delete [QUERY]` to remove images from the ChatGPT library.
 - The standalone command is a dry run by default and requires `--yes` for actual
   deletion.
 - A blank query must be rejected rather than treated as “all images”.

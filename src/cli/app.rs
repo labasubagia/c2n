@@ -40,10 +40,6 @@ pub enum Command {
     /// Manage the local SQLite database.
     #[command(subcommand)]
     Db(DbCommand),
-
-    /// Manage the ChatGPT library.
-    #[command(subcommand)]
-    Library(LibraryCommand),
 }
 
 #[derive(Debug, Subcommand)]
@@ -57,6 +53,10 @@ pub enum ImgCommand {
 
     /// Clean the output directory, preserving the database.
     Clear,
+
+    /// Manage the ChatGPT library.
+    #[command(subcommand)]
+    Library(LibraryCommand),
 }
 
 #[derive(Debug, Subcommand)]
@@ -179,7 +179,6 @@ pub async fn run(cli: Cli) -> Result<()> {
     match command {
         Command::Img(cmd) => run_img(cmd).await,
         Command::Db(cmd) => run_db(cmd),
-        Command::Library(cmd) => run_library(cmd).await,
     }
 }
 
@@ -188,6 +187,7 @@ async fn run_img(cmd: ImgCommand) -> Result<()> {
         ImgCommand::Sync(args) => run_sync(args).await,
         ImgCommand::Status(args) => run_account_status(args),
         ImgCommand::Clear => run_clean_output(),
+        ImgCommand::Library(cmd) => run_library(cmd).await,
     }
 }
 

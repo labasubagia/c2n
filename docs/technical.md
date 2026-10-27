@@ -338,7 +338,7 @@ is marked ready, matching the original tool's behavior.
 - **`db restore <SOURCE>`**: uses the SQLite backup API into the live
   connection, then runs `PRAGMA wal_checkpoint(TRUNCATE)`. This avoids replacing
   the database file underneath open handles.
-- **`library delete [QUERY]`**: dry-runs by default and prints a count. With
+- **`img library delete [QUERY]`**: dry-runs by default and prints a count. With
   `--yes`, deletes matching images concurrently and prints the remaining count.
   A blank query is rejected instead of being treated as “all images”. Deletes
   use the ChatGPT `delete_stream` endpoint, parse SSE `data:` events, and show a

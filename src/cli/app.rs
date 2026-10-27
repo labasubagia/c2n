@@ -54,7 +54,7 @@ pub enum Command {
 #[derive(Debug, Subcommand)]
 #[command(arg_required_else_help = true)]
 pub enum ImgCommand {
-    /// Clean the output directory, preserving the database.
+    /// Clean the images folder, preserving the database and other output.
     Clear {
         /// Actually remove files. Without this flag, only list what would be removed.
         #[arg(long)]
@@ -353,11 +353,11 @@ fn run_account_status(args: AccountStatusArgs) -> Result<()> {
 fn run_clean_output(yes: bool) -> Result<()> {
     let filesystem = Filesystem::new();
     if !yes {
-        let removable = filesystem.list_cleanable_entries()?;
+        let removable = filesystem.list_cleanable_images()?;
         if removable.is_empty() {
-            println!("Dry run: no output files would be removed.");
+            println!("Dry run: no images would be removed.");
         } else {
-            println!("Dry run: these output entries would be removed:");
+            println!("Dry run: these images would be removed:");
             for path in removable {
                 println!("  {}", path.display());
             }
@@ -366,9 +366,9 @@ fn run_clean_output(yes: bool) -> Result<()> {
         return Ok(());
     }
 
-    println!("Cleaning output path...");
-    filesystem.clean_output()?;
-    println!("Output path cleaned.");
+    println!("Cleaning images folder...");
+    filesystem.clean_images()?;
+    println!("Images folder cleaned.");
     Ok(())
 }
 

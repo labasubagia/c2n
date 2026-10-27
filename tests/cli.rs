@@ -62,7 +62,8 @@ fn img_clear_requires_yes_to_remove_files() {
         .args(["img", "clear", "--yes"])
         .assert()
         .success();
-    assert!(!data.join("images").exists());
+    assert!(data.join("images").exists());
+    assert!(!data.join("images/remove.png").exists());
     assert!(data.join("chatgpt.db").exists());
 }
 

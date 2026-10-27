@@ -289,62 +289,32 @@ impl Filesystem {
         }
     }
 
-    /// List entries `clean_output` would remove, without changing the filesystem.
-    pub fn list_cleanable_entries(&self) -> Result<Vec<PathBuf>, FsError> {
-        if !self.data_dir.exists() {
+    /// List entries `clean_images` would remove, without changing the filesystem.
+    pub fn list_cleanable_images(&self) -> Result<Vec<PathBuf>, FsError> {
+        let images = self.data_dir.join("images");
+        if !images.exists() {
             return Ok(Vec::new());
         }
-        let db_path = self.db_path();
-        let mut removable = Vec::new();
-        for entry in std::fs::read_dir(&self.data_dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            let file_type = entry.file_type()?;
-            if path == db_path {
-                continue;
-            }
-            if file_type.is_file()
-                && matches!(
-                    path.file_name().and_then(|name| name.to_str()),
-                    Some(".gitkeep" | "chatgpt.db-wal" | "chatgpt.db-shm" | "chatgpt.db-journal")
-                )
-            {
-                continue;
-            }
-            removable.push(path);
-        }
-        Ok(removable)
+        std::fs::read_dir(&images)?
+            .map(|entry| entry.map(|e| e.path()).map_err(FsError::from))
+            .collect()
     }
 
-    /// Remove everything in `output/` except the database and `.gitkeep`.
-    pub fn clean_output(&self) -> Result<(), FsError> {
-        if !self.data_dir.exists() {
+    /// Remove everything inside the images folder, preserving the folder itself.
+    ///
+    /// A subdirectory symlink is unlinked, never traversed by `remove_dir_all`;
+    /// its target is outside this cleanup boundary.
+    pub fn clean_images(&self) -> Result<(), FsError> {
+        let images = self.data_dir.join("images");
+        if !images.exists() {
             return Ok(());
         }
 
-        let root = std::fs::canonicalize(&self.data_dir)?;
-        let db_path = self.db_path();
-        for entry in std::fs::read_dir(&self.data_dir)? {
+        let root = std::fs::canonicalize(&images)?;
+        for entry in std::fs::read_dir(&images)? {
             let entry = entry?;
             let path = entry.path();
-            let canonical_root = std::fs::canonicalize(&self.data_dir)?;
-            if canonical_root != root {
-                return Err(FsError::Escape(self.data_dir.display().to_string()));
-            }
             let file_type = entry.file_type()?;
-            if path == db_path {
-                continue;
-            }
-            if file_type.is_file()
-                && matches!(
-                    path.file_name().and_then(|name| name.to_str()),
-                    Some(".gitkeep" | "chatgpt.db-wal" | "chatgpt.db-shm" | "chatgpt.db-journal")
-                )
-            {
-                continue;
-            }
-            // A root-level symlink is unlinked, never traversed by
-            // `remove_dir_all`; its target is outside this cleanup boundary.
             if file_type.is_dir() {
                 let canonical = std::fs::canonicalize(&path)?;
                 if !canonical.starts_with(&root) {
@@ -615,23 +585,23 @@ mod tests {
             .expect_err("dangling symlink escape should be rejected");
         assert!(matches!(error, FsError::Escape(_)));
     }
-
     #[cfg(unix)]
     #[test]
-    fn clean_output_removes_symlinks_without_following_them() {
+    fn clean_images_removes_symlinks_without_following_them() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("output");
         let outside = temp.path().join("outside");
-        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(root.join("images")).unwrap();
         std::fs::create_dir_all(&outside).unwrap();
         std::fs::write(outside.join("keep.png"), b"keep").unwrap();
-        std::os::unix::fs::symlink(&outside, root.join("link")).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("images").join("link")).unwrap();
 
         let filesystem = Filesystem::with_data_dir(&root);
-        filesystem.clean_output().unwrap();
+        filesystem.clean_images().unwrap();
 
         assert!(outside.join("keep.png").exists());
-        assert!(!root.join("link").exists());
+        assert!(!root.join("images").join("link").exists());
+        assert!(root.join("images").exists());
     }
 
     #[cfg(unix)]
@@ -693,9 +663,8 @@ mod tests {
             .expect_err("images symlink should not escape the data directory");
         assert!(matches!(error, FsError::Escape(_)));
     }
-
     #[test]
-    fn cleans_output_but_preserves_database_state() {
+    fn cleans_images_but_preserves_output_state() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("output");
         std::fs::create_dir_all(root.join("images")).unwrap();
@@ -711,7 +680,7 @@ mod tests {
         std::fs::write(root.join("images").join("old.png"), b"remove").unwrap();
 
         let filesystem = Filesystem::with_data_dir(&root);
-        filesystem.clean_output().unwrap();
+        filesystem.clean_images().unwrap();
 
         for name in [
             "chatgpt.db",
@@ -722,6 +691,7 @@ mod tests {
         ] {
             assert!(root.join(name).exists(), "{name} should be preserved");
         }
-        assert!(!root.join("images").exists());
+        assert!(root.join("images").exists());
+        assert!(!root.join("images").join("old.png").exists());
     }
 }

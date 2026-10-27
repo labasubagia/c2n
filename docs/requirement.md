@@ -196,8 +196,8 @@ The product scope is divided into these functional pillars:
   snapshot even while other processes write to the database.
 - Provide `db restore <SOURCE>` using the SQLite backup API into the live
   connection rather than replacing the database file underneath open handles.
-- Provide `img clear` to remove temporary assets while preserving the
-  database, WAL/SHM/journal files, and `.gitkeep`.
+- Provide `img clear` to remove images under `output/images/` while preserving
+  the database, WAL/SHM/journal files, `.gitkeep`, and all other output.
 
 ---
 

@@ -27,6 +27,66 @@ fn img_help_lists_subcommands() {
 }
 
 #[test]
+fn img_clear_defaults_to_dry_run() {
+    let temp = tempfile::tempdir().unwrap();
+    let cfg = temp.path().join("cfg");
+    let data = temp.path().join("data");
+    std::fs::create_dir_all(data.join("images")).unwrap();
+    std::fs::write(data.join("images/keep.png"), b"keep").unwrap();
+
+    Command::cargo_bin("c2n")
+        .unwrap()
+        .env("C2N_CONFIG_DIR", &cfg)
+        .env("C2N_DATA_DIR", &data)
+        .args(["img", "clear"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Dry run"))
+        .stdout(predicate::str::contains("images"));
+    assert!(data.join("images/keep.png").exists());
+}
+
+#[test]
+fn img_clear_requires_yes_to_remove_files() {
+    let temp = tempfile::tempdir().unwrap();
+    let cfg = temp.path().join("cfg");
+    let data = temp.path().join("data");
+    std::fs::create_dir_all(data.join("images")).unwrap();
+    std::fs::write(data.join("images/remove.png"), b"remove").unwrap();
+    std::fs::write(data.join("chatgpt.db"), b"db").unwrap();
+
+    Command::cargo_bin("c2n")
+        .unwrap()
+        .env("C2N_CONFIG_DIR", &cfg)
+        .env("C2N_DATA_DIR", &data)
+        .args(["img", "clear", "--yes"])
+        .assert()
+        .success();
+    assert!(!data.join("images").exists());
+    assert!(data.join("chatgpt.db").exists());
+}
+
+#[test]
+fn restore_requires_yes_to_modify_the_database() {
+    let temp = tempfile::tempdir().unwrap();
+    let cfg = temp.path().join("cfg");
+    let data = temp.path().join("data");
+    let source = temp.path().join("backup.db");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::write(&source, b"not a database").unwrap();
+
+    Command::cargo_bin("c2n")
+        .unwrap()
+        .env("C2N_CONFIG_DIR", &cfg)
+        .env("C2N_DATA_DIR", &data)
+        .args(["db", "restore", source.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Dry run"));
+    assert!(!data.join("chatgpt.db").exists());
+}
+
+#[test]
 fn library_help_lists_delete_subcommand() {
     Command::cargo_bin("c2n")
         .unwrap()

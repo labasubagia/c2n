@@ -55,7 +55,11 @@ pub enum Command {
 #[command(arg_required_else_help = true)]
 pub enum ImgCommand {
     /// Clean the output directory, preserving the database.
-    Clear,
+    Clear {
+        /// Actually remove files. Without this flag, only list what would be removed.
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -71,6 +75,10 @@ pub enum DbCommand {
     Restore {
         /// Path to the backup file to restore from.
         source: PathBuf,
+
+        /// Actually restore the database. Without this flag, only show the target.
+        #[arg(long)]
+        yes: bool,
     },
 }
 
@@ -178,14 +186,14 @@ pub async fn run(cli: Cli) -> Result<()> {
 
 fn run_img(cmd: ImgCommand) -> Result<()> {
     match cmd {
-        ImgCommand::Clear => run_clean_output(),
+        ImgCommand::Clear { yes } => run_clean_output(yes),
     }
 }
 
 fn run_db(cmd: DbCommand) -> Result<()> {
     match cmd {
         DbCommand::Backup { target } => run_backup(&target),
-        DbCommand::Restore { source } => run_restore(&source),
+        DbCommand::Restore { source, yes } => run_restore(&source, yes),
     }
 }
 
@@ -342,9 +350,24 @@ fn run_account_status(args: AccountStatusArgs) -> Result<()> {
     Ok(())
 }
 
-fn run_clean_output() -> Result<()> {
+fn run_clean_output(yes: bool) -> Result<()> {
+    let filesystem = Filesystem::new();
+    if !yes {
+        let removable = filesystem.list_cleanable_entries()?;
+        if removable.is_empty() {
+            println!("Dry run: no output files would be removed.");
+        } else {
+            println!("Dry run: these output entries would be removed:");
+            for path in removable {
+                println!("  {}", path.display());
+            }
+            println!("Pass --yes to remove them.");
+        }
+        return Ok(());
+    }
+
     println!("Cleaning output path...");
-    Filesystem::new().clean_output()?;
+    filesystem.clean_output()?;
     println!("Output path cleaned.");
     Ok(())
 }
@@ -358,7 +381,15 @@ fn run_backup(target: &Path) -> Result<()> {
     Ok(())
 }
 
-fn run_restore(source: &Path) -> Result<()> {
+fn run_restore(source: &Path, yes: bool) -> Result<()> {
+    if !yes {
+        println!(
+            "Dry run: database {} would be restored from {}. Pass --yes to proceed.",
+            Filesystem::new().db_path().display(),
+            source.display()
+        );
+        return Ok(());
+    }
     println!("Restoring database from {}...", source.display());
     let store = SqliteStore::open(Filesystem::new().db_path())?;
     let result = store.restore(source)?;

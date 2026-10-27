@@ -1,5 +1,6 @@
 //! Notion API adapter for file uploads and database pages.
 
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -11,7 +12,7 @@ use serde_json::{Value, json};
 use crate::adapters::sqlite::{NotionCache, StoreError};
 use crate::domain::models::{DataSource, NotionContext};
 use crate::shared::constants::NOTION_BASE_URL;
-use crate::shared::http::{HttpError, build_client, ensure_success, retry_http};
+use crate::shared::http::{HttpError, build_client, ensure_success, retry_http, retry_http_with};
 
 #[derive(Debug, thiserror::Error)]
 pub enum NotionError {
@@ -31,6 +32,8 @@ pub enum NotionError {
     NoDataSources(String),
     #[error("invalid file path: {0}")]
     InvalidPath(String),
+    #[error("invalid response while reconciling Notion page: {0}")]
+    InvalidResponse(String),
 }
 
 #[async_trait]
@@ -132,20 +135,25 @@ impl NotionClient {
         &self,
         data_source_id: &str,
         query: &str,
+        cursor: Option<&str>,
     ) -> Result<Value, NotionError> {
         let url = format!("{}/v1/data_sources/{}/query", self.base_url, data_source_id);
+        let mut payload = json!({
+            "filter": {
+                "and": [
+                    {"property": "Name", "title": {"equals": query}}
+                ]
+            }
+        });
+        if let Some(cursor) = cursor {
+            payload["start_cursor"] = json!(cursor);
+        }
         retry_http(|| async {
             let response = self
                 .http
                 .post(&url)
                 .headers(self.headers.clone())
-                .json(&json!({
-                    "filter": {
-                        "and": [
-                            {"property": "Name", "title": {"equals": query}}
-                        ]
-                    }
-                }))
+                .json(&payload)
                 .send()
                 .await?;
             let response = ensure_success(response, Method::POST).await?;
@@ -160,27 +168,63 @@ impl NotionClient {
         data_source_id: &str,
         query: &str,
     ) -> Result<bool, NotionError> {
-        let data = self.query_data_source(data_source_id, query).await?;
-        let Some(results) = data.get("results").and_then(Value::as_array) else {
-            return Ok(false);
-        };
-
-        for page in results {
-            let name = page
-                .get("properties")
-                .and_then(|properties| properties.get("Name"))
-                .and_then(|name| name.get("title"))
+        let mut cursor = None;
+        let mut seen_cursors = HashSet::new();
+        loop {
+            let data = self
+                .query_data_source(data_source_id, query, cursor.as_deref())
+                .await?;
+            let results = data
+                .get("results")
                 .and_then(Value::as_array)
-                .and_then(|titles| titles.first())
-                .and_then(|title| title.get("text"))
-                .and_then(|text| text.get("content"))
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            if name == query {
-                return Ok(true);
+                .ok_or_else(|| NotionError::InvalidResponse("missing results array".into()))?;
+
+            for page in results {
+                let title = page
+                    .get("properties")
+                    .and_then(|properties| properties.get("Name"))
+                    .and_then(|name| name.get("title"))
+                    .and_then(Value::as_array)
+                    .ok_or_else(|| {
+                        NotionError::InvalidResponse("page is missing Name.title".into())
+                    })?;
+                let mut name = String::new();
+                for part in title {
+                    let text = part
+                        .get("plain_text")
+                        .and_then(Value::as_str)
+                        .or_else(|| {
+                            part.get("text")
+                                .and_then(|text| text.get("content"))
+                                .and_then(Value::as_str)
+                        })
+                        .ok_or_else(|| {
+                            NotionError::InvalidResponse("invalid Name.title text".into())
+                        })?;
+                    name.push_str(text);
+                }
+                if name == query {
+                    return Ok(true);
+                }
             }
+
+            if data.get("has_more").and_then(Value::as_bool) != Some(true) {
+                return Ok(false);
+            }
+            let next_cursor = data
+                .get("next_cursor")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    NotionError::InvalidResponse("has_more response has no next_cursor".into())
+                })?;
+            if !seen_cursors.insert(next_cursor.to_owned()) {
+                return Err(NotionError::InvalidResponse(
+                    "repeated pagination cursor".into(),
+                ));
+            }
+            cursor = Some(next_cursor.to_owned());
         }
-        Ok(false)
     }
 
     async fn create_upload(
@@ -331,19 +375,67 @@ impl NotionApi for NotionClient {
         });
         let url = format!("{}/v1/pages", self.base_url);
 
-        retry_http(|| async {
-            let response = self
-                .http
-                .post(&url)
-                .headers(self.headers.clone())
-                .json(&payload)
-                .send()
-                .await?;
-            let response = ensure_success(response, Method::POST).await?;
-            Ok(response.json::<Value>().await?)
-        })
+        match retry_http_with(
+            || async {
+                let response = self
+                    .http
+                    .post(&url)
+                    .headers(self.headers.clone())
+                    .json(&payload)
+                    .send()
+                    .await?;
+                let response = ensure_success(response, Method::POST).await?;
+                Ok(response.json::<Value>().await?)
+            },
+            |error| {
+                matches!(
+                    error,
+                    HttpError::Status {
+                        status: StatusCode::TOO_MANY_REQUESTS,
+                        ..
+                    }
+                )
+            },
+        )
         .await
-        .map_err(NotionError::from)
+        {
+            Ok(page) => Ok(page),
+            Err(error) if is_ambiguous_page_create_error(&error) => {
+                match self.is_page_exists_in_db(db_id, &file_name).await {
+                    Ok(true) => {
+                        tracing::warn!(
+                            file_name,
+                            "page creation response was ambiguous; found the page during reconciliation"
+                        );
+                        Ok(json!({"reconciled": true, "name": file_name}))
+                    }
+                    Ok(false) => Err(NotionError::Http(error)),
+                    Err(check_error) => {
+                        tracing::warn!(
+                            file_name,
+                            error = %check_error,
+                            "could not reconcile ambiguous page creation"
+                        );
+                        Err(NotionError::Http(error))
+                    }
+                }
+            }
+            Err(error) => Err(NotionError::Http(error)),
+        }
+    }
+}
+
+fn is_ambiguous_page_create_error(error: &HttpError) -> bool {
+    match error {
+        HttpError::Request(error) => {
+            error.is_timeout()
+                || error.is_connect()
+                || error.is_request()
+                || error.is_body()
+                || error.is_decode()
+        }
+        HttpError::Status { status, .. } => status.is_server_error(),
+        HttpError::Io(_) => false,
     }
 }
 

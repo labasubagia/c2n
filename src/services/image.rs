@@ -2,6 +2,7 @@
 
 use std::path::Path;
 
+use crate::adapters::filesystem::SafeFileTarget;
 use img_parts::Bytes;
 use img_parts::png::{Png, PngChunk};
 
@@ -39,6 +40,16 @@ pub fn get_png_prompt(path: &Path) -> Result<Option<String>, ImageError> {
 /// The write is atomic: a temporary file in the same directory is persisted
 /// over the original only after the complete PNG has been encoded.
 pub fn add_prompt_to_image(path: &Path, prompt: &str) -> Result<ImageOutcome, ImageError> {
+    let target = SafeFileTarget::open(path)
+        .map_err(|error| ImageError::Io(std::io::Error::other(error.to_string())))?;
+    add_prompt_to_target(&target, path, prompt)
+}
+
+pub(crate) fn add_prompt_to_target(
+    target: &SafeFileTarget,
+    path: &Path,
+    prompt: &str,
+) -> Result<ImageOutcome, ImageError> {
     if !path
         .extension()
         .and_then(|extension| extension.to_str())
@@ -47,7 +58,11 @@ pub fn add_prompt_to_image(path: &Path, prompt: &str) -> Result<ImageOutcome, Im
         return Ok(ImageOutcome::SkippedNotPng);
     }
 
-    let bytes = std::fs::read(path)?;
+    let mut bytes = Vec::new();
+    let mut source = target
+        .open_read()
+        .map_err(|error| ImageError::Io(std::io::Error::other(error.to_string())))?;
+    std::io::Read::read_to_end(&mut source, &mut bytes)?;
     let mut png = Png::from_bytes(bytes.into())?;
 
     let existing: Vec<Option<String>> = png
@@ -84,19 +99,13 @@ pub fn add_prompt_to_image(path: &Path, prompt: &str) -> Result<ImageOutcome, Im
         .ok_or(ImageError::MissingIend)?;
     png.chunks_mut().insert(iend_position, chunk);
 
-    let parent = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    let mut temporary = tempfile::Builder::new()
-        .prefix(".c2n-")
-        .suffix(".png")
-        .tempfile_in(parent)?;
-    png.encoder().write_to(temporary.as_file_mut())?;
-    temporary.as_file_mut().sync_all()?;
-    temporary
-        .persist(path)
-        .map_err(|error| ImageError::Io(error.error))?;
+    let mut temporary = target
+        .create_temp()
+        .map_err(|error| ImageError::Io(std::io::Error::other(error.to_string())))?;
+    png.encoder().write_to(temporary.file_mut())?;
+    target
+        .replace(temporary)
+        .map_err(|error| ImageError::Io(std::io::Error::other(error.to_string())))?;
 
     Ok(ImageOutcome::Written)
 }

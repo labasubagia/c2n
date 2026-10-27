@@ -85,6 +85,17 @@ where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<T, HttpError>>,
 {
+    retry_http_with(operation, HttpError::is_retryable).await
+}
+
+/// Run an HTTP operation with the shared backoff policy and a custom retry
+/// predicate. Use this when repeating a request could duplicate a remote write.
+pub async fn retry_http_with<T, F, Fut, P>(operation: F, should_retry: P) -> Result<T, HttpError>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T, HttpError>>,
+    P: Fn(&HttpError) -> bool,
+{
     let policy = ExponentialBuilder::default()
         .with_min_delay(Duration::from_secs(MIN_RETRY_DELAY_SECONDS))
         .with_max_delay(Duration::from_secs(MAX_RETRY_DELAY_SECONDS))
@@ -93,7 +104,7 @@ where
 
     operation
         .retry(policy)
-        .when(HttpError::is_retryable)
+        .when(should_retry)
         .adjust(|error, current| {
             // `None` means the backoff has exhausted its retry budget. Do not
             // let a `Retry-After` header extend the retry loop indefinitely.

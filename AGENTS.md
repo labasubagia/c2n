@@ -20,7 +20,7 @@ cargo build --release
 The release binary is `target/release/c2n`; use `cargo run -- <command>` during development. Run a single integration test with:
 
 ```bash
-cargo test --test upload_pipeline download_only_never_marks_uploaded_or_deletes_conversation
+cargo test --test sync_pipeline sync_then_delete_conversation_removes_local_images
 ```
 
 CI runs the four commands above in that order. Do not use `cargo test` alone as the final check; CI uses `--all-targets`.
@@ -29,7 +29,7 @@ CI runs the four commands above in that order. Do not use `cargo test` alone as 
 
 - `src/cli/app.rs`: clap definitions and command handlers.
 - `src/config.rs`: TOML loading, validation, and shared/account fallback resolution. Raw config models live in `src/domain/models.rs`.
-- `src/services/`: orchestration (`upload`, `history`, `image`, `account_status`).
+- `src/services/`: orchestration (`sync`, `history`, `image`, `account_status`).
 - `src/adapters/`: external boundaries (`chatgpt`, `notion`, `sqlite`, `filesystem`).
 - Traits `ChatGptApi`, `NotionApi`, `GenerationStore`, and `NotionCache` exist so services can be tested with fakes.
 - `src/shared/http.rs`: the only retry path. All HTTP requests should go through `retry_http`/`backon`.
@@ -38,10 +38,10 @@ CI runs the four commands above in that order. Do not use `cargo test` alone as 
 
 ## Safety Invariants
 
-- Set `uploaded_at` only after a successful Notion page creation or a positive remote duplicate check. Never mark rows uploaded when uploads are disabled.
-- `--no-upload-to-notion` must not require Notion credentials or a database ID, and must not construct a Notion client.
-- Delete a conversation only when every image is uploaded or verified uploaded, uploads are enabled, and the run is not history replay. Empty conversation lists must never trigger deletion.
-- `delete-library`, and library cleanup during `upload-to-notion`, are dry runs unless `--yes` is supplied. `clean-output-path` preserves `chatgpt.db`, its WAL/SHM/journal files, and `.gitkeep`; `restore-db` uses the SQLite backup API rather than replacing the live database file.
+- Set `uploaded_at` only after a successful Notion page creation or a positive remote duplicate check.
+- Delete a conversation only when every image is uploaded or verified uploaded and the run is not history replay. Empty conversation lists must never trigger deletion.
+- Remove local images for a conversation only after ChatGPT confirms the conversation was deleted. If the delete request fails, keep the files. Ignore missing files, and warn and continue on other removal errors.
+- `delete-library`, and library cleanup during `sync`, are dry runs unless `--yes` is supplied. `clean-output-path` preserves `chatgpt.db`, its WAL/SHM/journal files, and `.gitkeep`; `restore-db` uses the SQLite backup API rather than replacing the live database file.
 - Reuse the original Notion file-upload ID when retrying page creation. Treat a `400` on the upload-send step as "already uploaded". Duplicate checks fail closed when the database exposes no data sources.
 - Keep retry behavior centralized: 10 total attempts, 2–60 second delays, retry 429/5xx/transport errors, and cap `Retry-After` at 60 seconds.
 - PNG prompt injection is idempotent and atomic; non-PNG files are skipped. Relative image paths resolve under `output/`, and `..` or symlink escapes must be rejected. Absolute paths remain allowed.
@@ -51,7 +51,7 @@ CI runs the four commands above in that order. Do not use `cargo test` alone as 
 
 - `config.toml` and `output/` are gitignored and may contain secrets or runtime state. Never commit them or print secrets from them; use `config.toml.example` for structure.
 - Account keys must be valid email addresses. Resolution precedence is CLI override, then per-account value, then shared value; blank per-account strings fall back to shared.
-- `--upload-to-notion` and `--check-notion-api` are compatibility flags; both behaviors are enabled by default. `--no-upload-to-notion` is the actual opt-out.
+- `--check-notion-api` is a compatibility flag; remote checks are enabled by default. `--no-check-notion-api` is the actual opt-out.
 - History replay defaults to the last 3 days; `--all` requires `--from-history` or `--verify-history`. `--history-folder` and `--timezone` are accepted for compatibility, but SQLite is the source of truth and history filtering uses absolute time.
 - `account-status` reads `output/chatgpt.db` and needs a valid config with accounts, but does not use ChatGPT or Notion credentials.
 - Do not run live upload, library-delete, restore, or cleanup commands against real data unless the user explicitly asks. Use temporary directories and mocks in tests.

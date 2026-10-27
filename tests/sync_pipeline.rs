@@ -1,6 +1,7 @@
-//! Integration tests for the sequential upload pipeline's safety guarantees.
+//! Integration tests for the sequential sync pipeline's safety guarantees.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -15,9 +16,8 @@ use c2n::adapters::filesystem::Filesystem;
 use c2n::adapters::notion::{NotionApi, NotionError};
 use c2n::adapters::sqlite::{GenerationStore, SqliteStore};
 use c2n::config::Config;
-use c2n::domain::models::{AccountConfig, AppConfig};
-use c2n::services::image::get_png_prompt;
-use c2n::services::upload::{UploadOptions, upload_to_notion_sequential};
+use c2n::domain::models::{AccountConfig, AppConfig, ChatGptImageGeneration};
+use c2n::services::sync::{SyncOptions, sync};
 use c2n::shared::http::HttpError;
 use c2n::shared::verbosity::{Reporter, Verbosity};
 
@@ -31,6 +31,8 @@ struct MockChatGpt {
     deletes: Mutex<Vec<String>>,
     library_deletes: Mutex<Vec<Option<String>>>,
     library_images: usize,
+    delete_should_fail: AtomicBool,
+    already_deleted: AtomicBool,
 }
 
 #[async_trait]
@@ -51,6 +53,12 @@ impl ChatGptApi for MockChatGpt {
             .lock()
             .unwrap()
             .push(conversation_id.to_owned());
+        if self.delete_should_fail.load(Ordering::SeqCst) {
+            return Err(HttpError::Io(std::io::Error::other("delete failed")));
+        }
+        if self.already_deleted.load(Ordering::SeqCst) {
+            return Ok(DeleteConversationResult::AlreadyDeleted);
+        }
         Ok(DeleteConversationResult::Deleted)
     }
 
@@ -113,6 +121,7 @@ impl ChatGptApi for MockChatGpt {
 struct MockNotion {
     headers: HeaderMap,
     adds: Mutex<Vec<(String, String)>>,
+    add_should_fail: AtomicBool,
 }
 
 #[async_trait]
@@ -131,6 +140,9 @@ impl NotionApi for MockNotion {
         file_path: &Path,
         _prompt: &str,
     ) -> Result<Value, NotionError> {
+        if self.add_should_fail.load(Ordering::SeqCst) {
+            return Err(NotionError::Io(std::io::Error::other("add failed")));
+        }
         self.adds.lock().unwrap().push((
             db_id.to_owned(),
             file_path
@@ -212,20 +224,22 @@ fn test_context() -> TestContext {
             deletes: Mutex::new(Vec::new()),
             library_deletes: Mutex::new(Vec::new()),
             library_images: 3,
+            delete_should_fail: AtomicBool::new(false),
+            already_deleted: AtomicBool::new(false),
         }),
         notion: Arc::new(MockNotion {
             headers: HeaderMap::new(),
             adds: Mutex::new(Vec::new()),
+            add_should_fail: AtomicBool::new(false),
         }),
     }
 }
 
-fn options(upload_to_notion: bool) -> UploadOptions {
-    UploadOptions {
+fn options() -> SyncOptions {
+    SyncOptions {
         account: ACCOUNT.to_owned(),
         db_id: DB_ID.to_owned(),
         image_folder: None,
-        upload_to_notion,
         delete_conversation: true,
         delete_library: false,
         delete_library_all: false,
@@ -241,97 +255,20 @@ fn options(upload_to_notion: bool) -> UploadOptions {
 }
 
 #[tokio::test]
-async fn download_only_does_not_require_a_database_id() {
-    let context = test_context();
-    let reporter = Reporter::new(Verbosity::Quiet, None);
-    let mut options = options(false);
-    options.db_id.clear();
-
-    upload_to_notion_sequential(
-        &options,
-        &context.config,
-        context.store.as_ref(),
-        &context.filesystem,
-        context.chatgpt.as_ref(),
-        None,
-        &reporter,
-    )
-    .await
-    .unwrap();
-
-    assert!(!context.store.is_uploaded(ACCOUNT, "img1").unwrap());
-}
-
-#[tokio::test]
-async fn download_only_never_marks_uploaded_or_deletes_conversation() {
-    let context = test_context();
-    let reporter = Reporter::new(Verbosity::Quiet, None);
-
-    upload_to_notion_sequential(
-        &options(false),
-        &context.config,
-        context.store.as_ref(),
-        &context.filesystem,
-        context.chatgpt.as_ref(),
-        None,
-        &reporter,
-    )
-    .await
-    .unwrap();
-
-    assert!(context.chatgpt.deletes.lock().unwrap().is_empty());
-    assert!(context.notion.adds.lock().unwrap().is_empty());
-    assert!(!context.store.is_uploaded(ACCOUNT, "img1").unwrap());
-
-    let image_path = context
-        .filesystem
-        .resolve_image_folder(None, None)
-        .unwrap()
-        .join("img1.png");
-    assert!(image_path.exists());
-    assert_eq!(
-        get_png_prompt(&image_path).unwrap().as_deref(),
-        Some("draw a cat")
-    );
-}
-
-#[tokio::test]
-async fn upload_mode_without_a_notion_client_fails_closed() {
-    let context = test_context();
-    let reporter = Reporter::new(Verbosity::Quiet, None);
-
-    upload_to_notion_sequential(
-        &options(true),
-        &context.config,
-        context.store.as_ref(),
-        &context.filesystem,
-        context.chatgpt.as_ref(),
-        None,
-        &reporter,
-    )
-    .await
-    .unwrap();
-
-    assert!(!context.store.is_uploaded(ACCOUNT, "img1").unwrap());
-    assert!(context.chatgpt.deletes.lock().unwrap().is_empty());
-    assert!(context.notion.adds.lock().unwrap().is_empty());
-}
-
-#[tokio::test]
 async fn library_deletion_is_a_dry_run_without_yes() {
     let context = test_context();
     let reporter = Reporter::new(Verbosity::Quiet, None);
-    let mut options = options(true);
+    let mut options = options();
     options.delete_library_all = true;
     options.confirm_delete_library = false;
 
-    upload_to_notion_sequential(
+    sync(
         &options,
         &context.config,
         context.store.as_ref(),
         &context.filesystem,
         context.chatgpt.as_ref(),
-        Some(context.notion.as_ref()),
+        context.notion.as_ref(),
         &reporter,
     )
     .await
@@ -347,17 +284,17 @@ async fn library_deletion_is_a_dry_run_without_yes() {
 async fn library_deletion_runs_with_yes() {
     let context = test_context();
     let reporter = Reporter::new(Verbosity::Quiet, None);
-    let mut options = options(true);
+    let mut options = options();
     options.delete_library_all = true;
     options.confirm_delete_library = true;
 
-    upload_to_notion_sequential(
+    sync(
         &options,
         &context.config,
         context.store.as_ref(),
         &context.filesystem,
         context.chatgpt.as_ref(),
-        Some(context.notion.as_ref()),
+        context.notion.as_ref(),
         &reporter,
     )
     .await
@@ -369,18 +306,26 @@ async fn library_deletion_runs_with_yes() {
     );
 }
 
+fn image_path(context: &TestContext) -> PathBuf {
+    context
+        .filesystem
+        .resolve_image_folder(None, None)
+        .unwrap()
+        .join("img1.png")
+}
+
 #[tokio::test]
-async fn upload_then_delete_conversation_after_verified_upload() {
+async fn sync_then_delete_conversation_removes_local_images() {
     let context = test_context();
     let reporter = Reporter::new(Verbosity::Quiet, None);
 
-    upload_to_notion_sequential(
-        &options(true),
+    sync(
+        &options(),
         &context.config,
         context.store.as_ref(),
         &context.filesystem,
         context.chatgpt.as_ref(),
-        Some(context.notion.as_ref()),
+        context.notion.as_ref(),
         &reporter,
     )
     .await
@@ -395,4 +340,130 @@ async fn upload_then_delete_conversation_after_verified_upload() {
         context.chatgpt.deletes.lock().unwrap().as_slice(),
         &["conv1".to_owned()]
     );
+    assert!(
+        !image_path(&context).exists(),
+        "local images must be removed after a successful conversation delete"
+    );
+}
+
+#[tokio::test]
+async fn already_deleted_conversation_removes_local_images() {
+    let context = test_context();
+    let reporter = Reporter::new(Verbosity::Quiet, None);
+    context
+        .chatgpt
+        .already_deleted
+        .store(true, Ordering::SeqCst);
+
+    sync(
+        &options(),
+        &context.config,
+        context.store.as_ref(),
+        &context.filesystem,
+        context.chatgpt.as_ref(),
+        context.notion.as_ref(),
+        &reporter,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        context.chatgpt.deletes.lock().unwrap().as_slice(),
+        &["conv1".to_owned()]
+    );
+    assert!(!image_path(&context).exists());
+}
+
+#[tokio::test]
+async fn failed_conversation_delete_keeps_local_images() {
+    let context = test_context();
+    let reporter = Reporter::new(Verbosity::Quiet, None);
+    context
+        .chatgpt
+        .delete_should_fail
+        .store(true, Ordering::SeqCst);
+
+    sync(
+        &options(),
+        &context.config,
+        context.store.as_ref(),
+        &context.filesystem,
+        context.chatgpt.as_ref(),
+        context.notion.as_ref(),
+        &reporter,
+    )
+    .await
+    .unwrap();
+
+    assert!(image_path(&context).exists());
+    assert_eq!(
+        context.chatgpt.deletes.lock().unwrap().as_slice(),
+        &["conv1".to_owned()]
+    );
+}
+
+#[tokio::test]
+async fn failed_upload_keeps_local_images() {
+    let context = test_context();
+    let reporter = Reporter::new(Verbosity::Quiet, None);
+    context.notion.add_should_fail.store(true, Ordering::SeqCst);
+
+    sync(
+        &options(),
+        &context.config,
+        context.store.as_ref(),
+        &context.filesystem,
+        context.chatgpt.as_ref(),
+        context.notion.as_ref(),
+        &reporter,
+    )
+    .await
+    .unwrap();
+
+    assert!(image_path(&context).exists());
+    assert!(!context.store.is_uploaded(ACCOUNT, "img1").unwrap());
+    assert!(context.chatgpt.deletes.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn history_replay_keeps_local_images() {
+    let context = test_context();
+    let reporter = Reporter::new(Verbosity::Quiet, None);
+    let mut options = options();
+    options.from_history = true;
+
+    context
+        .store
+        .upsert_generations(
+            ACCOUNT,
+            &[ChatGptImageGeneration {
+                created_at: "2026-01-01T00:00:00.000000Z".to_owned(),
+                id: "img1".to_owned(),
+                conversation_id: "conv1".to_owned(),
+                message_id: "image-node".to_owned(),
+                asset_pointer: "pointer".to_owned(),
+                url: "https://example.test/img1.png".to_owned(),
+                prompt: "draw a cat".to_owned(),
+            }],
+        )
+        .unwrap();
+
+    let path = image_path(&context);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, &context.chatgpt.png).unwrap();
+
+    sync(
+        &options,
+        &context.config,
+        context.store.as_ref(),
+        &context.filesystem,
+        context.chatgpt.as_ref(),
+        context.notion.as_ref(),
+        &reporter,
+    )
+    .await
+    .unwrap();
+
+    assert!(path.exists());
+    assert!(context.chatgpt.deletes.lock().unwrap().is_empty());
 }

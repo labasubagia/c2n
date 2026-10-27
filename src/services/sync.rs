@@ -1,4 +1,4 @@
-//! Sequential upload pipeline: one conversation at a time, end to end.
+//! Sequential sync pipeline: one conversation at a time, end to end.
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
@@ -22,11 +22,10 @@ use crate::shared::http::HttpError;
 use crate::shared::verbosity::{FailLogEntry, Reporter};
 
 #[derive(Debug, Clone)]
-pub struct UploadOptions {
+pub struct SyncOptions {
     pub account: String,
     pub db_id: String,
     pub image_folder: Option<String>,
-    pub upload_to_notion: bool,
     pub delete_conversation: bool,
     pub delete_library: bool,
     pub delete_library_all: bool,
@@ -41,7 +40,7 @@ pub struct UploadOptions {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum UploadError {
+pub enum SyncError {
     #[error(transparent)]
     Config(#[from] ConfigError),
     #[error(transparent)]
@@ -56,19 +55,6 @@ pub enum UploadError {
     History(#[from] HistoryError),
     #[error("database id must not be empty")]
     MissingDatabaseId,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ProcessOutcome {
-    Uploaded,
-    AlreadyUploaded,
-    DownloadedOnly,
-}
-
-impl ProcessOutcome {
-    fn is_uploaded(self) -> bool {
-        matches!(self, Self::Uploaded | Self::AlreadyUploaded)
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,7 +96,7 @@ enum ConversationPayload {
     Api(Vec<ImageGenItem>),
 }
 
-/// Clears an active progress bar when the upload pipeline exits, including on
+/// Clears an active progress bar when the sync pipeline exits, including on
 /// early errors, so a failed account cannot leave a stale bar behind.
 struct ProgressGuard<'a> {
     reporter: &'a Reporter,
@@ -124,17 +110,33 @@ impl Drop for ProgressGuard<'_> {
 
 /// Process conversations sequentially to minimize rate limits.
 #[allow(clippy::too_many_arguments)]
-pub async fn upload_to_notion_sequential(
-    options: &UploadOptions,
+pub async fn sync(
+    options: &SyncOptions,
     config: &Config,
     store: &dyn GenerationStore,
     filesystem: &Filesystem,
     chatgpt: &dyn ChatGptApi,
-    notion: Option<&dyn NotionApi>,
+    notion: &dyn NotionApi,
     reporter: &Reporter,
-) -> Result<(), UploadError> {
-    if options.upload_to_notion && options.db_id.trim().is_empty() {
-        return Err(UploadError::MissingDatabaseId);
+) -> Result<(), SyncError> {
+    run(
+        options, config, store, filesystem, chatgpt, notion, reporter,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run(
+    options: &SyncOptions,
+    config: &Config,
+    store: &dyn GenerationStore,
+    filesystem: &Filesystem,
+    chatgpt: &dyn ChatGptApi,
+    notion: &dyn NotionApi,
+    reporter: &Reporter,
+) -> Result<(), SyncError> {
+    if options.db_id.trim().is_empty() {
+        return Err(SyncError::MissingDatabaseId);
     }
 
     let resolved = config.account(&options.account)?;
@@ -231,7 +233,6 @@ pub async fn upload_to_notion_sequential(
         }
 
         let mut all_ok = true;
-        let mut all_uploaded = true;
         let mut failed_count = 0;
 
         for generation in &generations {
@@ -247,14 +248,9 @@ pub async fn upload_to_notion_sequential(
             )
             .await
             {
-                Ok(outcome) => {
-                    if !outcome.is_uploaded() {
-                        all_uploaded = false;
-                    }
-                }
+                Ok(()) => {}
                 Err(failure) => {
                     all_ok = false;
-                    all_uploaded = false;
                     failed_count += 1;
                     let file_name = file_name_for(generation);
                     reporter.error(format!("Failed to process {file_name}: {}", failure.error));
@@ -273,29 +269,24 @@ pub async fn upload_to_notion_sequential(
 
         if all_ok {
             reporter.add_stage("success", 1);
-            if options.delete_conversation {
-                if !options.from_history && options.upload_to_notion && all_uploaded {
-                    match chatgpt.delete_conversation(&conversation_id).await {
-                        Ok(result) => {
-                            if reporter.is_verbose() {
-                                let suffix = if result == DeleteConversationResult::AlreadyDeleted {
-                                    " (already deleted)"
-                                } else {
-                                    ""
-                                };
-                                reporter.verbose(format!(
-                                    "✅ Conversation {conversation_id} deleted{suffix}"
-                                ));
-                            }
+            if options.delete_conversation && !options.from_history {
+                match chatgpt.delete_conversation(&conversation_id).await {
+                    Ok(result) => {
+                        if reporter.is_verbose() {
+                            let suffix = if result == DeleteConversationResult::AlreadyDeleted {
+                                " (already deleted)"
+                            } else {
+                                ""
+                            };
+                            reporter.verbose(format!(
+                                "✅ Conversation {conversation_id} deleted{suffix}"
+                            ));
                         }
-                        Err(error) => reporter.error(format!(
-                            "Failed to delete conversation {conversation_id}: {error}"
-                        )),
+                        remove_conversation_images(&generations, &image_folder, reporter);
                     }
-                } else if reporter.is_verbose() {
-                    reporter.verbose(format!(
-                        "⚠️  Conversation {conversation_id} kept; not all images were verified uploaded"
-                    ));
+                    Err(error) => reporter.error(format!(
+                        "Failed to delete conversation {conversation_id}: {error}"
+                    )),
                 }
             }
         } else {
@@ -325,47 +316,38 @@ pub async fn upload_to_notion_sequential(
 #[allow(clippy::too_many_arguments)]
 async fn process_one(
     generation: &ChatGptImageGeneration,
-    options: &UploadOptions,
+    options: &SyncOptions,
     image_folder: &Path,
     store: &dyn GenerationStore,
-    notion: Option<&dyn NotionApi>,
+    notion: &dyn NotionApi,
     chatgpt: &dyn ChatGptApi,
     uploaded_ids: &mut HashSet<String>,
     reporter: &Reporter,
-) -> Result<ProcessOutcome, ProcessFailure> {
+) -> Result<(), ProcessFailure> {
     let file_name = file_name_for(generation);
     let file_path = image_folder.join(&file_name);
-    let notion = if options.upload_to_notion {
-        Some(notion.ok_or_else(|| {
-            ProcessFailure::new(ProcessStage::Upload, "Notion client is unavailable")
-        })?)
-    } else {
-        None
-    };
 
-    if let Some(notion) = notion {
-        if uploaded_ids.contains(&generation.id) && !options.check_notion_api {
-            reporter.verbose(format!("⏭️  {file_name} skipped, already uploaded"));
-            return Ok(ProcessOutcome::AlreadyUploaded);
+    if uploaded_ids.contains(&generation.id) && !options.check_notion_api {
+        reporter.verbose(format!("⏭️  {file_name} skipped, already uploaded"));
+        return Ok(());
+    }
+
+    match notion
+        .is_page_exists_in_db(&options.db_id, &file_name)
+        .await
+    {
+        Ok(true) => {
+            let ids = HashSet::from([generation.id.clone()]);
+            store
+                .mark_uploaded(&options.account, &ids)
+                .map_err(|error| ProcessFailure::new(ProcessStage::NotionCheck, error))?;
+            uploaded_ids.insert(generation.id.clone());
+            reporter.verbose(format!("⏭️  {file_name} skipped, already in Notion"));
+            return Ok(());
         }
-
-        match notion
-            .is_page_exists_in_db(&options.db_id, &file_name)
-            .await
-        {
-            Ok(true) => {
-                let ids = HashSet::from([generation.id.clone()]);
-                store
-                    .mark_uploaded(&options.account, &ids)
-                    .map_err(|error| ProcessFailure::new(ProcessStage::NotionCheck, error))?;
-                uploaded_ids.insert(generation.id.clone());
-                reporter.verbose(format!("⏭️  {file_name} skipped, already in Notion"));
-                return Ok(ProcessOutcome::AlreadyUploaded);
-            }
-            Ok(false) => {}
-            Err(error) => {
-                return Err(ProcessFailure::new(ProcessStage::NotionCheck, error));
-            }
+        Ok(false) => {}
+        Err(error) => {
+            return Err(ProcessFailure::new(ProcessStage::NotionCheck, error));
         }
     }
 
@@ -386,26 +368,39 @@ async fn process_one(
         }
     }
 
-    if let Some(notion) = notion {
-        notion
-            .add_page_to_db(&options.db_id, &file_path, &generation.prompt)
-            .await
-            .map_err(|error| ProcessFailure::new(ProcessStage::Upload, error))?;
-        let ids = HashSet::from([generation.id.clone()]);
-        store
-            .mark_uploaded(&options.account, &ids)
-            .map_err(|error| ProcessFailure::new(ProcessStage::Upload, error))?;
-        uploaded_ids.insert(generation.id.clone());
-        reporter.verbose(format!("✅ {file_name} uploaded"));
-        Ok(ProcessOutcome::Uploaded)
-    } else {
-        reporter.verbose(format!("⬇️  {file_name} downloaded; upload disabled"));
-        Ok(ProcessOutcome::DownloadedOnly)
+    notion
+        .add_page_to_db(&options.db_id, &file_path, &generation.prompt)
+        .await
+        .map_err(|error| ProcessFailure::new(ProcessStage::Upload, error))?;
+    let ids = HashSet::from([generation.id.clone()]);
+    store
+        .mark_uploaded(&options.account, &ids)
+        .map_err(|error| ProcessFailure::new(ProcessStage::Upload, error))?;
+    uploaded_ids.insert(generation.id.clone());
+    reporter.verbose(format!("✅ {file_name} uploaded"));
+    Ok(())
+}
+
+/// Remove the local images that belong to a conversation after ChatGPT
+/// confirms the conversation was deleted.
+fn remove_conversation_images(
+    generations: &[ChatGptImageGeneration],
+    image_folder: &Path,
+    reporter: &Reporter,
+) {
+    for generation in generations {
+        let file_name = file_name_for(generation);
+        let file_path = image_folder.join(&file_name);
+        match std::fs::remove_file(&file_path) {
+            Ok(()) => reporter.verbose(format!("🗑️  {file_name} removed")),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => reporter.warn(format!("Failed to remove {file_name}: {error}")),
+        }
     }
 }
 
 async fn cleanup_library(
-    options: &UploadOptions,
+    options: &SyncOptions,
     resolved: &ResolvedConfig,
     chatgpt: &dyn ChatGptApi,
     reporter: &Reporter,

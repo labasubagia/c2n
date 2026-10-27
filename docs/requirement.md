@@ -141,8 +141,7 @@ The product scope is divided into these functional pillars:
 - Make metadata injection idempotent: if the file already contains the correct
   prompt, skip disk writes.
 - Write metadata atomically so an interrupted run cannot leave a truncated PNG.
-- Support `--no-upload-to-notion` to download and enrich images without creating
-  Notion pages or marking local rows as uploaded.
+- Always synchronize enriched images to Notion; there is no download-only mode.
 
 ### 5.3 Notion Synchronization Pipeline
 
@@ -173,10 +172,13 @@ The product scope is divided into these functional pillars:
 - Provide `--delete-conversation` to hide processed conversations from ChatGPT.
 - Conversation deletion must be **fail-safe**: it is blocked unless every image
   in the conversation has been uploaded or verified already uploaded.
-- Deletion is ignored when upload is disabled (`--no-upload-to-notion`).
+- Conversation deletion is only available on `sync`.
 - Deletion is ignored during history replay (`--from-history` or
   `--verify-history`).
 - A 404 response containing `conversation_deleted` is treated as success.
+- After ChatGPT confirms deletion, remove that conversation's local image files.
+  Keep the files if the delete request fails; ignore missing files and warn on
+  other removal errors.
 
 ### 5.6 Library Maintenance
 
@@ -185,9 +187,9 @@ The product scope is divided into these functional pillars:
   deletion.
 - A blank query must be rejected rather than treated as “all images”.
 - `--max-concurrent` controls concurrent delete requests.
-- `upload-to-notion --delete-library` uses configured queries.
-- `upload-to-notion --delete-library-all` targets every library image.
-- Upload-time library deletion is also a dry run unless `--yes` is supplied.
+- `sync --delete-library` uses configured queries.
+- `sync --delete-library-all` targets every library image.
+- Post-run library deletion is also a dry run unless `--yes` is supplied.
 
 ### 5.7 Database Maintenance
 

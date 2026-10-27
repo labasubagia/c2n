@@ -178,10 +178,9 @@ authorization_token = "eyJhbGciOiJSUzI1_other..."
   `history_folder`, `image_folder`, `delete_library_queries`,
   `remove_all_library_images`, and `conversation_delay` override the shared
   values. Blank per-account strings fall back to the shared value.
-- `notion.api_key` is required for uploads.
-- `notion.database_id` is required for uploads unless `--db-id` or
-  `[shared].notion_database_id` supplies one. Download-only mode does not need
-  either Notion value.
+- `notion.api_key` is required for `sync`.
+- `notion.database_id` is required for `sync` unless `--db-id` or
+  `[shared].notion_database_id` supplies one.
 - Every account key must be a valid email address.
 - `--config <PATH>` selects a different configuration file.
 
@@ -194,17 +193,17 @@ with `cargo run --`.
 
 ```bash
 c2n --help
-c2n upload-to-notion --help
+c2n sync --help
 c2n account-status --help
 c2n delete-library --help
 ```
 
-### 4.1 `upload-to-notion`
+### 4.1 `sync`
 
 Synchronizes images from one or more ChatGPT accounts into Notion.
 
 ```bash
-c2n upload-to-notion [OPTIONS]
+c2n sync [OPTIONS]
 ```
 
 Options:
@@ -216,20 +215,15 @@ Options:
 - `--image-folder <PATH>`: Image output folder. A relative path is resolved
   under `output/`; an absolute path is used as-is.
 - `--db-id <ID>`: Override the configured Notion database ID.
-- `--upload-to-notion`: Accepted for CLI compatibility; uploads are enabled by
-  default.
-- `--no-upload-to-notion`: Download images and embed prompts, but do not create
-  Notion pages and do not mark rows uploaded. Notion credentials and a database
-  ID are not required in this mode.
 - `--delete-conversation`: Hide a conversation in ChatGPT after every image in
-  it is verified uploaded. Ignored with `--no-upload-to-notion` and in history
-  replay modes.
+  it is verified uploaded, then remove that conversation's local image files.
+  Ignored in history replay modes.
 - `--delete-library`: After upload, delete library images matching
   `delete_library_queries` from the config. Without `--yes`, this only counts
   and reports the matching images.
 - `--delete-library-all`: After upload, delete all library images. Without
   `--yes`, this only counts and reports them.
-- `--yes`: Confirm upload-time library deletion. Required for both
+- `--yes`: Confirm post-run library deletion. Required for both
   `--delete-library` and `--delete-library-all` to actually delete anything.
 - `--check-notion-api`: Accepted for CLI compatibility; remote checks are
   enabled by default.
@@ -244,7 +238,7 @@ Options:
 - `--no-cache`: Fetch fresh live data and skip the local existence cache for the
   current discovery batch.
 - `--timezone <IANA>`: Accepted for compatibility. `account-status` uses it for
-  date boundaries; upload history filtering uses absolute time.
+  date boundaries; history filtering uses absolute time.
 - `--conversation-delay <SECONDS>`: Delay between conversations. Defaults to the
   account/shared config value, or `2.0`.
 - `--fail-log <PATH>`: Append failed images to a JSONL log.
@@ -257,34 +251,31 @@ Examples:
 
 ```bash
 # One account, recent 100 items
-c2n upload-to-notion --account personal@example.com --limit 100
+c2n sync --account personal@example.com --limit 100
 
 # Every configured account
-c2n upload-to-notion
-
-# Download and embed prompts only
-c2n upload-to-notion --no-upload-to-notion
+c2n sync
 
 # Replay non-uploaded history from the last 3 days
-c2n upload-to-notion --from-history
+c2n sync --from-history
 
 # Replay all non-uploaded history
-c2n upload-to-notion --from-history --all
+c2n sync --from-history --all
 
 # Audit and repair uploaded history against Notion
-c2n upload-to-notion --verify-history --all
+c2n sync --verify-history --all
 
 # Hide conversations only after verified uploads
-c2n upload-to-notion --delete-conversation
+c2n sync --delete-conversation
 
-# Preview upload-time library deletion (dry run)
-c2n upload-to-notion --delete-library
+# Preview post-run library deletion (dry run)
+c2n sync --delete-library
 
 # Actually delete configured library queries after upload
-c2n upload-to-notion --delete-library --yes
+c2n sync --delete-library --yes
 
 # Log failures for later inspection
-c2n upload-to-notion --fail-log output/failures.jsonl
+c2n sync --fail-log output/failures.jsonl
 ```
 
 ### 4.2 `account-status`
@@ -399,7 +390,7 @@ The only execution mode processes conversations one at a time, end to end:
 4. Wait `--conversation-delay` seconds before the next conversation.
 
 ```bash
-c2n upload-to-notion --conversation-delay 2.0
+c2n sync --conversation-delay 2.0
 ```
 
 ### 5.2 Retry Policy
@@ -414,7 +405,7 @@ Retry diagnostics are emitted through `tracing`. Set `RUST_LOG` to override the
 default filter:
 
 ```bash
-RUST_LOG=c2n=debug c2n upload-to-notion
+RUST_LOG=c2n=debug c2n sync
 ```
 
 `--verbose` enables per-file output; `--quiet` suppresses non-warning output.
@@ -428,7 +419,7 @@ RUST_LOG=c2n=debug c2n upload-to-notion
 Run a sync every hour:
 
 ```cron
-0 * * * * cd /home/john/tmp/c2n && /home/john/.local/bin/c2n upload-to-notion >> /home/john/tmp/c2n/output/cron.log 2>&1
+0 * * * * cd /home/john/tmp/c2n && /home/john/.local/bin/c2n sync >> /home/john/tmp/c2n/output/cron.log 2>&1
 ```
 
 Use absolute paths in cron entries. Ensure the user running cron can read
@@ -447,7 +438,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/home/john/tmp/c2n
-ExecStart=/home/john/.local/bin/c2n upload-to-notion
+ExecStart=/home/john/.local/bin/c2n sync
 ```
 
 Create `~/.config/systemd/user/c2n-sync.timer`:
@@ -483,7 +474,7 @@ journalctl --user -u c2n-sync.service -f
 ## 7. Safety Checklist
 
 - Keep `config.toml` private. It contains ChatGPT cookies and Notion tokens.
-- Use `--no-upload-to-notion` for a download-only trial run.
+- Use `c2n sync --from-history` for a local replay trial run.
 - Use `--verify-history` after restoring a database or changing Notion
   databases.
 - Leave `--check-notion-api` enabled unless you intentionally trust local state.

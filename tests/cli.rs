@@ -10,7 +10,7 @@ fn help_lists_core_commands() {
         .arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("upload-to-notion"))
+        .stdout(predicate::str::contains("sync"))
         .stdout(predicate::str::contains("account-status"))
         .stdout(predicate::str::contains("delete-library"));
 }
@@ -19,7 +19,7 @@ fn help_lists_core_commands() {
 fn rejects_conflicting_verbosity_before_loading_config() {
     Command::cargo_bin("c2n")
         .unwrap()
-        .args(["upload-to-notion", "--verbose", "--quiet"])
+        .args(["sync", "--verbose", "--quiet"])
         .assert()
         .failure()
         .stderr(predicate::str::contains(
@@ -31,7 +31,7 @@ fn rejects_conflicting_verbosity_before_loading_config() {
 fn rejects_all_without_history_mode_before_loading_config() {
     Command::cargo_bin("c2n")
         .unwrap()
-        .args(["upload-to-notion", "--all"])
+        .args(["sync", "--all"])
         .assert()
         .failure()
         .stderr(predicate::str::contains(
@@ -52,15 +52,18 @@ fn rejects_blank_delete_library_query_before_loading_config() {
 }
 
 #[test]
-fn rejects_conflicting_upload_flags() {
+fn old_commands_are_rejected() {
     Command::cargo_bin("c2n")
         .unwrap()
-        .args([
-            "upload-to-notion",
-            "--upload-to-notion",
-            "--no-upload-to-notion",
-        ])
+        .arg("upload-to-notion")
         .assert()
         .failure()
-        .stderr(predicate::str::contains("cannot be used with"));
+        .stderr(predicate::str::contains("unrecognized subcommand"));
+
+    Command::cargo_bin("c2n")
+        .unwrap()
+        .arg("download")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unrecognized subcommand"));
 }

@@ -55,7 +55,6 @@ user_agent = "Mozilla/5.0 ..."
 cookie_string_base64 = "b2FpLWRpZD0..."
 # Optional overrides:
 # image_folder = "~/Pictures/chatgpt"
-# conversation_delay = 2.0
 
 [notion]
 api_key = "secret_xxx"

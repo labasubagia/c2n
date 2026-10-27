@@ -159,7 +159,6 @@ fn resolve_account(
                 .clone()
                 .filter(|value| !value.trim().is_empty())
         });
-    let conversation_delay = account.conversation_delay.or(shared.conversation_delay);
 
     Ok(ResolvedConfig {
         account_name: name.to_owned(),
@@ -170,7 +169,6 @@ fn resolve_account(
         notion_version: notion.version.clone(),
         notion_database_id: notion_database_id.unwrap(),
         image_folder,
-        conversation_delay,
     })
 }
 
@@ -198,7 +196,6 @@ mod tests {
                 cookie_string_base64: Some("cookie".to_owned()),
                 notion_database_id: None,
                 image_folder: None,
-                conversation_delay: None,
             },
         );
         app

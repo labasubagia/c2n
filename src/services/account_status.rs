@@ -190,7 +190,6 @@ mod tests {
                 cookie_string_base64: None,
                 notion_database_id: None,
                 image_folder: None,
-                conversation_delay: None,
             },
         );
         Config::from_app(PathBuf::from("config.toml"), app).unwrap()

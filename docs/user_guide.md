@@ -151,7 +151,6 @@ user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36..."
 cookie_string_base64 = "b2FpLWRpZD0..."
 # Optional:
 # image_folder = "~/Pictures/chatgpt"
-# conversation_delay = 2.0
 
 [notion]
 api_key = "secret_yourNotionIntegrationTokenHere"
@@ -172,9 +171,9 @@ authorization_token = "eyJhbGciOiJSUzI1_other..."
 ### 3.3 Resolution Rules
 
 - `[shared]` values are fallbacks.
-- Per-account `user_agent`, `cookie_string_base64`, `notion_database_id`,
-  `image_folder`, and `conversation_delay` override the shared values. Blank
-  per-account strings fall back to the shared value.
+- Per-account `user_agent`, `cookie_string_base64`, `notion_database_id`, and
+  `image_folder` override the shared values. Blank per-account strings fall back
+  to the shared value.
 - `notion.api_key` is required for `sync`.
 - `notion.database_id` is required for `sync`; a per-account or `[shared]`
   `notion_database_id` supplies it.
@@ -261,8 +260,6 @@ Options:
   current discovery batch.
 - `--timezone <IANA>`: Accepted for compatibility. `status` uses it for
   date boundaries; history filtering uses absolute time.
-- `--conversation-delay <SECONDS>`: Delay between conversations. Defaults to the
-  account/shared config value, or `2.0`.
 - `--fail-log <PATH>`: Append failed images to a JSONL log.
 - `-v`, `--verbose`: Show per-file decisions and skips.
 - `-q`, `--quiet`: Show only warnings, errors, and the final summary.
@@ -402,11 +399,6 @@ The only execution mode processes conversations one at a time, end to end:
 1. Fetch conversation details once per conversation.
 2. Group images from the same conversation.
 3. Download, embed the prompt, and upload each image.
-4. Wait `--conversation-delay` seconds before the next conversation.
-
-```bash
-c2n sync --conversation-delay 2.0
-```
 
 ### 5.2 Retry Policy
 

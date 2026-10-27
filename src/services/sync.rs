@@ -2,7 +2,6 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
-use std::time::Duration;
 
 use indicatif::{ProgressBar, ProgressStyle};
 
@@ -32,7 +31,6 @@ pub struct SyncOptions {
     pub limit: usize,
     pub keep_days: Option<i64>,
     pub no_cache: bool,
-    pub conversation_delay: f64,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -171,8 +169,7 @@ async fn run(
     reporter.set_progress(progress.clone());
     let _progress_guard = ProgressGuard { reporter };
 
-    let total = conversations.len();
-    for (index, (conversation_id, payload)) in conversations.into_iter().enumerate() {
+    for (conversation_id, payload) in conversations {
         let generations = match payload {
             ConversationPayload::History(generations) => generations,
             ConversationPayload::Api(items) => {
@@ -212,9 +209,6 @@ async fn run(
                 "⚠️  Conversation {conversation_id} has no indexed images; skipping"
             ));
             progress.inc(1);
-            if options.conversation_delay > 0.0 && index + 1 < total {
-                tokio::time::sleep(Duration::from_secs_f64(options.conversation_delay)).await;
-            }
             continue;
         }
 
@@ -285,9 +279,6 @@ async fn run(
         }
 
         progress.inc(1);
-        if options.conversation_delay > 0.0 && index + 1 < total {
-            tokio::time::sleep(Duration::from_secs_f64(options.conversation_delay)).await;
-        }
     }
 
     reporter.clear_progress();

@@ -10,7 +10,6 @@ cookie_string_base64 = "b2FpLWRpZD0..."
 # Optional global overrides:
 # notion_database_id = "your_default_database_id"
 # image_folder = "~/Pictures/chatgpt"
-# conversation_delay = 2.0
 
 [notion]
 api_key = "secret_xxx"
@@ -29,7 +28,6 @@ authorization_token = "eyJhbGciOi..."
 # user_agent = "Mozilla/5.0 ..."
 # cookie_string_base64 = "cGVyLWFjY291bnQtY29va2ll..."
 # image_folder = "~/my_chatgpt/images"
-# conversation_delay = 2.0
 
 [accounts."account_b@example.com"]
 authorization_token = "eyJhbGciOi..."

@@ -182,7 +182,6 @@ fn test_context() -> TestContext {
             cookie_string_base64: Some("Y29va2ll".to_owned()),
             notion_database_id: None,
             image_folder: None,
-            conversation_delay: None,
         },
     );
     let config = Config::from_app(PathBuf::from("config.toml"), app).unwrap();
@@ -243,7 +242,6 @@ fn options() -> SyncOptions {
         limit: 100,
         keep_days: None,
         no_cache: false,
-        conversation_delay: 0.0,
     }
 }
 

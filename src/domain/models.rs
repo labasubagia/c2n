@@ -73,8 +73,6 @@ pub struct SharedConfig {
     pub notion_database_id: Option<String>,
     #[serde(default)]
     pub image_folder: Option<String>,
-    #[serde(default)]
-    pub conversation_delay: Option<f64>,
 }
 
 /// Per-account ChatGPT credentials and overrides.
@@ -90,8 +88,6 @@ pub struct AccountConfig {
     pub notion_database_id: Option<String>,
     #[serde(default)]
     pub image_folder: Option<String>,
-    #[serde(default)]
-    pub conversation_delay: Option<f64>,
 }
 
 /// The TOML configuration file as written by the user.
@@ -117,7 +113,6 @@ pub struct ResolvedConfig {
     pub notion_version: String,
     pub notion_database_id: String,
     pub image_folder: Option<String>,
-    pub conversation_delay: Option<f64>,
 }
 
 impl ResolvedConfig {

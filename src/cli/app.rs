@@ -123,10 +123,6 @@ pub struct SyncArgs {
     #[arg(long)]
     pub account: Option<String>,
 
-    /// Delay in seconds between conversations.
-    #[arg(long)]
-    pub conversation_delay: Option<f64>,
-
     /// Show per-file output.
     #[arg(long, short = 'v')]
     pub verbose: bool,
@@ -208,7 +204,6 @@ struct RunArgs {
     keep_days: Option<i64>,
     no_cache: bool,
     limit: usize,
-    conversation_delay: Option<f64>,
     account: Option<String>,
 }
 
@@ -234,7 +229,6 @@ async fn run_sync(args: SyncArgs) -> Result<()> {
             },
             no_cache: args.no_cache,
             limit: args.limit,
-            conversation_delay: args.conversation_delay,
             account: args.account,
         },
         &reporter,
@@ -275,13 +269,6 @@ async fn run_accounts(args: RunArgs, reporter: &Reporter) -> Result<()> {
         let resolved = config.account(account_name)?;
 
         let db_id = resolved.notion_database_id.clone();
-        let conversation_delay = args
-            .conversation_delay
-            .or(resolved.conversation_delay)
-            .unwrap_or(0.0);
-        if !conversation_delay.is_finite() || conversation_delay < 0.0 {
-            bail!("--conversation-delay must be a non-negative number");
-        }
 
         print_account_header(reporter, action, account_name, index + 1, total_accounts);
 
@@ -297,7 +284,6 @@ async fn run_accounts(args: RunArgs, reporter: &Reporter) -> Result<()> {
             limit: args.limit,
             keep_days: args.keep_days,
             no_cache: args.no_cache,
-            conversation_delay,
         };
 
         let result = sync(
@@ -554,7 +540,6 @@ mod tests {
             limit: 100,
             timezone: None,
             account: None,
-            conversation_delay: None,
             verbose: false,
             quiet: false,
             fail_log: None,

@@ -151,8 +151,6 @@ user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36..."
 cookie_string_base64 = "b2FpLWRpZD0..."
 # Optional:
 # image_folder = "~/Pictures/chatgpt"
-# delete_library_queries = ["old prompt", "scratch"]
-# remove_all_library_images = false
 # conversation_delay = 2.0
 
 [notion]
@@ -175,8 +173,7 @@ authorization_token = "eyJhbGciOiJSUzI1_other..."
 
 - `[shared]` values are fallbacks.
 - Per-account `user_agent`, `cookie_string_base64`, `notion_database_id`,
-  `history_folder`, `image_folder`, `delete_library_queries`,
-  `remove_all_library_images`, and `conversation_delay` override the shared
+  `history_folder`, `image_folder`, and `conversation_delay` override the shared
   values. Blank per-account strings fall back to the shared value.
 - `notion.api_key` is required for `sync`.
 - `notion.database_id` is required for `sync` unless `--db-id` or
@@ -251,13 +248,6 @@ Options:
 - `--delete-conversation`: Hide a conversation in ChatGPT after every image in
   it is verified uploaded, then remove that conversation's local image files.
   Ignored in history replay modes.
-- `--delete-library`: After upload, delete library images matching
-  `delete_library_queries` from the config. Without `--yes`, this only counts
-  and reports the matching images.
-- `--delete-library-all`: After upload, delete all library images. Without
-  `--yes`, this only counts and reports them.
-- `--yes`: Confirm post-run library deletion. Required for both
-  `--delete-library` and `--delete-library-all` to actually delete anything.
 - `--check-notion-api`: Accepted for CLI compatibility; remote checks are
   enabled by default.
 - `--no-check-notion-api`: Trust the local `uploaded_at` marker and skip remote
@@ -299,11 +289,6 @@ c2n sync --verify-history --all
 # Hide conversations only after verified uploads
 c2n sync --delete-conversation
 
-# Preview post-run library deletion (dry run)
-c2n sync --delete-library
-
-# Actually delete configured library queries after upload
-c2n sync --delete-library --yes
 
 # Log failures for later inspection
 c2n sync --fail-log output/failures.jsonl

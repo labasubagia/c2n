@@ -343,10 +343,6 @@ is marked ready, matching the original tool's behavior.
   A blank query is rejected instead of being treated as “all images”. Deletes
   use the ChatGPT `delete_stream` endpoint, parse SSE `data:` events, and show a
   live progress indicator.
-- **Post-run library cleanup** (`sync --delete-library` or
-  `sync --delete-library-all`): also dry-runs unless `--yes` is supplied. In
-  dry-run mode it counts matching images without deleting them. Blank configured
-  queries are ignored, and an empty query list is reported as a warning.
 
 ---
 

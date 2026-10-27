@@ -187,8 +187,6 @@ mod tests {
                 notion_database_id: None,
                 history_folder: None,
                 image_folder: None,
-                delete_library_queries: Vec::new(),
-                remove_all_library_images: false,
                 conversation_delay: None,
             },
         );

@@ -172,27 +172,6 @@ fn resolve_account(
         account.cookie_string_base64 = shared.cookie_string_base64.clone();
     }
 
-    let account_queries: Vec<String> = account
-        .delete_library_queries
-        .iter()
-        .filter(|query| !query.trim().is_empty())
-        .cloned()
-        .collect();
-    let shared_queries: Vec<String> = shared
-        .delete_library_queries
-        .iter()
-        .filter(|query| !query.trim().is_empty())
-        .cloned()
-        .collect();
-    let delete_library_queries = if account_queries.is_empty() {
-        shared_queries
-    } else {
-        account_queries
-    };
-
-    let remove_all_library_images =
-        account.remove_all_library_images || shared.remove_all_library_images;
-
     let conversation_delay = account.conversation_delay.or(shared.conversation_delay);
 
     ResolvedConfig {
@@ -201,8 +180,6 @@ fn resolve_account(
         notion,
         history_folder,
         image_folder,
-        delete_library_queries,
-        remove_all_library_images,
         conversation_delay,
     }
 }
@@ -222,8 +199,6 @@ mod tests {
                 notion_database_id: None,
                 history_folder: None,
                 image_folder: None,
-                delete_library_queries: Vec::new(),
-                remove_all_library_images: false,
                 conversation_delay: None,
             },
         );
@@ -242,12 +217,10 @@ mod tests {
         let mut app = app_with("user@example.com");
         app.shared.user_agent = Some("agent".to_owned());
         app.shared.image_folder = Some("images".to_owned());
-        app.shared.delete_library_queries = vec!["old".to_owned()];
         let config = Config::from_app(PathBuf::from("config.toml"), app).unwrap();
         let resolved = config.account("user@example.com").unwrap();
         assert_eq!(resolved.account.user_agent.as_deref(), Some("agent"));
         assert_eq!(resolved.image_folder.as_deref(), Some("images"));
-        assert_eq!(resolved.delete_library_queries, vec!["old"]);
     }
 
     #[test]
@@ -273,28 +246,6 @@ mod tests {
         );
         assert_eq!(resolved.history_folder.as_deref(), Some("shared-history"));
         assert_eq!(resolved.image_folder.as_deref(), Some("shared-images"));
-    }
-
-    #[test]
-    fn blank_library_queries_are_dropped() {
-        let mut app = app_with("user@example.com");
-        app.shared.delete_library_queries = vec!["  ".to_owned(), "old".to_owned()];
-        let config = Config::from_app(PathBuf::from("config.toml"), app).unwrap();
-        let resolved = config.account("user@example.com").unwrap();
-        assert_eq!(resolved.delete_library_queries, vec!["old"]);
-    }
-
-    #[test]
-    fn blank_account_library_queries_fall_back_to_shared() {
-        let mut app = app_with("user@example.com");
-        app.shared.delete_library_queries = vec!["shared".to_owned()];
-        app.accounts
-            .get_mut("user@example.com")
-            .unwrap()
-            .delete_library_queries = vec!["   ".to_owned()];
-        let config = Config::from_app(PathBuf::from("config.toml"), app).unwrap();
-        let resolved = config.account("user@example.com").unwrap();
-        assert_eq!(resolved.delete_library_queries, vec!["shared"]);
     }
 
     #[test]

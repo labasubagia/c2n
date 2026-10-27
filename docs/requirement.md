@@ -189,9 +189,6 @@ The product scope is divided into these functional pillars:
   deletion.
 - A blank query must be rejected rather than treated as “all images”.
 - `--max-concurrent` controls concurrent delete requests.
-- `sync --delete-library` uses configured queries.
-- `sync --delete-library-all` targets every library image.
-- Post-run library deletion is also a dry run unless `--yes` is supplied.
 
 ### 5.7 Database Maintenance
 

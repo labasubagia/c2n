@@ -183,8 +183,6 @@ fn test_context() -> TestContext {
             notion_database_id: None,
             history_folder: None,
             image_folder: None,
-            delete_library_queries: Vec::new(),
-            remove_all_library_images: false,
             conversation_delay: None,
         },
     );
@@ -240,9 +238,6 @@ fn options() -> SyncOptions {
         account: ACCOUNT.to_owned(),
         db_id: DB_ID.to_owned(),
         delete_conversation: true,
-        delete_library: false,
-        delete_library_all: false,
-        confirm_delete_library: false,
         check_notion_api: false,
         from_history: false,
         include_uploaded: false,
@@ -251,58 +246,6 @@ fn options() -> SyncOptions {
         no_cache: false,
         conversation_delay: 0.0,
     }
-}
-
-#[tokio::test]
-async fn library_deletion_is_a_dry_run_without_yes() {
-    let context = test_context();
-    let reporter = Reporter::new(Verbosity::Quiet, None);
-    let mut options = options();
-    options.delete_library_all = true;
-    options.confirm_delete_library = false;
-
-    sync(
-        &options,
-        &context.config,
-        context.store.as_ref(),
-        &context.filesystem,
-        context.chatgpt.as_ref(),
-        context.notion.as_ref(),
-        &reporter,
-    )
-    .await
-    .unwrap();
-
-    assert!(
-        context.chatgpt.library_deletes.lock().unwrap().is_empty(),
-        "library deletion must not run without --yes"
-    );
-}
-
-#[tokio::test]
-async fn library_deletion_runs_with_yes() {
-    let context = test_context();
-    let reporter = Reporter::new(Verbosity::Quiet, None);
-    let mut options = options();
-    options.delete_library_all = true;
-    options.confirm_delete_library = true;
-
-    sync(
-        &options,
-        &context.config,
-        context.store.as_ref(),
-        &context.filesystem,
-        context.chatgpt.as_ref(),
-        context.notion.as_ref(),
-        &reporter,
-    )
-    .await
-    .unwrap();
-
-    assert_eq!(
-        context.chatgpt.library_deletes.lock().unwrap().as_slice(),
-        &[None]
-    );
 }
 
 fn image_path(context: &TestContext) -> PathBuf {

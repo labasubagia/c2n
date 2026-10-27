@@ -11,7 +11,7 @@ use crate::adapters::filesystem::{Filesystem, FsError};
 use crate::adapters::notion::{NotionApi, NotionError};
 use crate::adapters::sqlite::{GenerationStore, GetGenerationsOptions, StoreError};
 use crate::config::{Config, ConfigError};
-use crate::domain::models::{ChatGptImageGeneration, ResolvedConfig};
+use crate::domain::models::ChatGptImageGeneration;
 use crate::services::history::{
     HistoryError, fetch_generations_for_conversation, get_uploaded_generation_ids,
     load_image_generations,
@@ -26,9 +26,6 @@ pub struct SyncOptions {
     pub account: String,
     pub db_id: String,
     pub delete_conversation: bool,
-    pub delete_library: bool,
-    pub delete_library_all: bool,
-    pub confirm_delete_library: bool,
     pub check_notion_api: bool,
     pub from_history: bool,
     pub include_uploaded: bool,
@@ -165,7 +162,6 @@ async fn run(
 
     if conversations.is_empty() {
         reporter.info("No generations found.");
-        cleanup_library(options, resolved, chatgpt, reporter).await?;
         return Ok(());
     }
 
@@ -305,7 +301,6 @@ async fn run(
         reporter.println(reporter.summary_line());
     }
 
-    cleanup_library(options, resolved, chatgpt, reporter).await?;
     Ok(())
 }
 
@@ -393,68 +388,6 @@ fn remove_conversation_images(
             Err(error) => reporter.warn(format!("Failed to remove {file_name}: {error}")),
         }
     }
-}
-
-async fn cleanup_library(
-    options: &SyncOptions,
-    resolved: &ResolvedConfig,
-    chatgpt: &dyn ChatGptApi,
-    reporter: &Reporter,
-) -> Result<(), HttpError> {
-    if !options.delete_library && !options.delete_library_all {
-        return Ok(());
-    }
-
-    let remove_all = options.delete_library_all || resolved.remove_all_library_images;
-    let queries: Vec<&str> = resolved
-        .delete_library_queries
-        .iter()
-        .map(|query| query.trim())
-        .filter(|query| !query.is_empty())
-        .collect();
-    if !remove_all && queries.is_empty() {
-        reporter
-            .warn("library deletion was requested, but no delete_library_queries are configured");
-        return Ok(());
-    }
-
-    if !options.confirm_delete_library {
-        if remove_all {
-            let count = chatgpt.count_library_images().await?;
-            reporter.println(format!(
-                "[{}] Dry run: {count} library image(s) would be deleted. Pass --yes to delete.",
-                options.account
-            ));
-        } else {
-            for query in queries {
-                let count = chatgpt.count_library_images_by_query(Some(query)).await?;
-                reporter.println(format!(
-                    "[{}] Dry run: {count} library image(s) would be deleted matching '{query}'. Pass --yes to delete.",
-                    options.account
-                ));
-            }
-        }
-        return Ok(());
-    }
-
-    if remove_all {
-        let deleted = chatgpt
-            .delete_library_images_by_query(None, 10, reporter)
-            .await?;
-        reporter.info(format!("Deleted {deleted} library images"));
-        return Ok(());
-    }
-
-    for query in queries {
-        let deleted = chatgpt
-            .delete_library_images_by_query(Some(query), 10, reporter)
-            .await?;
-        reporter.info(format!(
-            "Deleted {deleted} library images matching '{query}'"
-        ));
-    }
-
-    Ok(())
 }
 
 fn group_history(

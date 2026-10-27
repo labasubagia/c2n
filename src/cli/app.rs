@@ -74,20 +74,8 @@ pub struct SyncArgs {
     #[arg(long)]
     pub delete_conversation: bool,
 
-    /// Delete images from the ChatGPT library after upload, using configured queries.
-    #[arg(long)]
-    pub delete_library: bool,
-
-    /// Delete ALL images from the ChatGPT library after upload.
-    #[arg(long)]
-    pub delete_library_all: bool,
-
-    /// Actually delete library images. Without this flag, library deletion is a dry run.
-    #[arg(long)]
-    pub yes: bool,
-
     /// Check the Notion API even when uploaded_at is already set (default).
-    #[arg(long, conflicts_with = "no_check_notion_api")]
+    #[arg(long, hide = true, conflicts_with = "no_check_notion_api")]
     pub check_notion_api: bool,
 
     /// Skip remote Notion checks even when uploaded_at is already set.
@@ -110,7 +98,7 @@ pub struct SyncArgs {
     #[arg(long)]
     pub no_cache: bool,
 
-    /// Maximum number of recent image generations to fetch.
+    /// Maximum number of recent image generations to fetch (default 100).
     #[arg(long, default_value_t = 100)]
     pub limit: usize,
 
@@ -184,9 +172,6 @@ pub async fn run(cli: Cli) -> Result<()> {
 struct RunArgs {
     db_id: Option<String>,
     delete_conversation: bool,
-    delete_library: bool,
-    delete_library_all: bool,
-    confirm_delete_library: bool,
     check_notion_api: bool,
     from_history: bool,
     include_uploaded: bool,
@@ -208,9 +193,6 @@ async fn run_sync(args: SyncArgs) -> Result<()> {
         RunArgs {
             db_id: args.db_id,
             delete_conversation: args.delete_conversation,
-            delete_library: args.delete_library,
-            delete_library_all: args.delete_library_all,
-            confirm_delete_library: args.yes,
             check_notion_api: args.check_notion_api
                 || !args.no_check_notion_api
                 || args.verify_history,
@@ -299,9 +281,6 @@ async fn run_accounts(args: RunArgs, reporter: &Reporter) -> Result<()> {
             account: account_name.clone(),
             db_id,
             delete_conversation: args.delete_conversation,
-            delete_library: args.delete_library,
-            delete_library_all: args.delete_library_all,
-            confirm_delete_library: args.confirm_delete_library,
             check_notion_api: args.check_notion_api,
             from_history: args.from_history,
             include_uploaded: args.include_uploaded,
@@ -465,33 +444,14 @@ async fn run_delete_library(args: DeleteLibraryArgs) -> Result<()> {
 }
 
 fn validate_sync_args(args: &SyncArgs) -> Result<()> {
-    validate_common_flags(
-        args.verbose,
-        args.quiet,
-        args.delete_library,
-        args.delete_library_all,
-    )?;
+    if args.verbose && args.quiet {
+        bail!("Cannot use --verbose and --quiet together");
+    }
     if args.all && !(args.from_history || args.verify_history) {
         bail!("--all only applies with --from-history or --verify-history");
     }
     Ok(())
 }
-
-fn validate_common_flags(
-    verbose: bool,
-    quiet: bool,
-    delete_library: bool,
-    delete_library_all: bool,
-) -> Result<()> {
-    if verbose && quiet {
-        bail!("Cannot use --verbose and --quiet together");
-    }
-    if delete_library && delete_library_all {
-        bail!("Use either --delete-library or --delete-library-all, not both");
-    }
-    Ok(())
-}
-
 fn validate_db_id(db_id: &str) -> Result<()> {
     if db_id.trim().len() < 10 {
         bail!("Notion database ID must be a valid ID");
@@ -587,9 +547,6 @@ mod tests {
         SyncArgs {
             db_id: None,
             delete_conversation: false,
-            delete_library: false,
-            delete_library_all: false,
-            yes: false,
             check_notion_api: false,
             no_check_notion_api: false,
             from_history: false,

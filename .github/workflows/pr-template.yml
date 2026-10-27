@@ -1,0 +1,60 @@
+name: PR Template
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-template:
+    name: PR Template Compliance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR description against template
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          body="${PR_BODY:-}"
+          errors=0
+
+          require_section() {
+            if ! grep -qE -- "^### ${1}[[:space:]]*$" <<<"$body"; then
+              echo "::error::Missing required section: ### ${1}"
+              errors=1
+            fi
+          }
+
+          require_section "Summary"
+          require_section "Changes Made"
+          require_section "Testing"
+
+          placeholders=(
+            "Brief description of the changes."
+            "Change 1"
+            "Change 2"
+            "Any additional information (optional)"
+          )
+          for placeholder in "${placeholders[@]}"; do
+            if grep -qiF -- "$placeholder" <<<"$body"; then
+              echo "::error::Placeholder text remains: '$placeholder'"
+              errors=1
+            fi
+          done
+
+          testing="${body#*### Testing}"
+          if ! grep -qE -- '^[[:space:]]*-[[:space:]]*\[[xX]\]' <<<"$testing"; then
+            echo "::error::No testing checkbox checked (mark at least one '- [x]')"
+            errors=1
+          fi
+
+          if (( errors )); then
+            echo "PR description does not comply with .github/PULL_REQUEST_TEMPLATE.md."
+            exit 1
+          fi
+
+          echo "PR description complies with template."

@@ -163,10 +163,22 @@ fn resolve_account(
         account.cookie_string_base64 = shared.cookie_string_base64.clone();
     }
 
-    let delete_library_queries = if account.delete_library_queries.is_empty() {
-        shared.delete_library_queries.clone()
+    let account_queries: Vec<String> = account
+        .delete_library_queries
+        .iter()
+        .filter(|query| !query.trim().is_empty())
+        .cloned()
+        .collect();
+    let shared_queries: Vec<String> = shared
+        .delete_library_queries
+        .iter()
+        .filter(|query| !query.trim().is_empty())
+        .cloned()
+        .collect();
+    let delete_library_queries = if account_queries.is_empty() {
+        shared_queries
     } else {
-        account.delete_library_queries.clone()
+        account_queries
     };
 
     let remove_all_library_images =
@@ -252,6 +264,28 @@ mod tests {
         );
         assert_eq!(resolved.history_folder.as_deref(), Some("shared-history"));
         assert_eq!(resolved.image_folder.as_deref(), Some("shared-images"));
+    }
+
+    #[test]
+    fn blank_library_queries_are_dropped() {
+        let mut app = app_with("user@example.com");
+        app.shared.delete_library_queries = vec!["  ".to_owned(), "old".to_owned()];
+        let config = Config::from_app(PathBuf::from("config.toml"), app).unwrap();
+        let resolved = config.account("user@example.com").unwrap();
+        assert_eq!(resolved.delete_library_queries, vec!["old"]);
+    }
+
+    #[test]
+    fn blank_account_library_queries_fall_back_to_shared() {
+        let mut app = app_with("user@example.com");
+        app.shared.delete_library_queries = vec!["shared".to_owned()];
+        app.accounts
+            .get_mut("user@example.com")
+            .unwrap()
+            .delete_library_queries = vec!["   ".to_owned()];
+        let config = Config::from_app(PathBuf::from("config.toml"), app).unwrap();
+        let resolved = config.account("user@example.com").unwrap();
+        assert_eq!(resolved.delete_library_queries, vec!["shared"]);
     }
 
     #[test]

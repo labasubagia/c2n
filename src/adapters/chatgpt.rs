@@ -1,9 +1,11 @@
 //! ChatGPT backend API adapter.
 
 use std::path::Path;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use futures_util::{StreamExt, TryStreamExt, stream};
+use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::header::HeaderMap;
 use reqwest::{Client, Method, StatusCode};
 use serde::de::Error as _;
@@ -61,6 +63,17 @@ pub struct LibraryImagesResponse {
 struct ImageGenerationsResponse {
     #[serde(default)]
     items: Vec<ImageGenItem>,
+}
+
+/// Clears the library-deletion progress indicator on every exit path.
+struct ProgressGuard<'a> {
+    reporter: &'a Reporter,
+}
+
+impl Drop for ProgressGuard<'_> {
+    fn drop(&mut self) {
+        self.reporter.clear_progress();
+    }
 }
 
 #[async_trait]
@@ -318,6 +331,27 @@ impl ChatGptApi for ChatGptClient {
         max_concurrent: usize,
         reporter: &Reporter,
     ) -> Result<usize, HttpError> {
+        let label = query
+            .map(|query| format!("matching '{query}'"))
+            .unwrap_or_else(|| "from all images".to_owned());
+        let expected = self.count_library_images_by_query(query).await?;
+        if expected == 0 {
+            return Ok(0);
+        }
+
+        let progress = ProgressBar::new(expected as u64);
+        progress.set_style(
+            ProgressStyle::with_template(
+                "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} deleted ({msg})",
+            )
+            .expect("valid progress template")
+            .progress_chars("#>-"),
+        );
+        progress.set_message(format!("library images {label}"));
+        progress.enable_steady_tick(Duration::from_millis(100));
+        reporter.set_progress(progress.clone());
+        let _progress_guard = ProgressGuard { reporter };
+
         let mut total = 0;
         let mut cursor: Option<String> = None;
         let concurrency = max_concurrent.max(1);
@@ -329,7 +363,14 @@ impl ChatGptApi for ChatGptClient {
             }
 
             let deleted = stream::iter(data.items)
-                .map(|item| async move { self.delete_library_file(&item).await.map(|_| 1usize) })
+                .map(|item| {
+                    let progress = progress.clone();
+                    async move {
+                        let result = self.delete_library_file(&item).await.map(|_| 1usize);
+                        progress.inc(1);
+                        result
+                    }
+                })
                 .buffer_unordered(concurrency)
                 .try_fold(0usize, |total, count| async move { Ok(total + count) })
                 .await?;

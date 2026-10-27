@@ -41,7 +41,7 @@ CI runs the four commands above in that order. Do not use `cargo test` alone as 
 - Set `uploaded_at` only after a successful Notion page creation or a positive remote duplicate check. Never mark rows uploaded when uploads are disabled.
 - `--no-upload-to-notion` must not require Notion credentials or a database ID, and must not construct a Notion client.
 - Delete a conversation only when every image is uploaded or verified uploaded, uploads are enabled, and the run is not history replay. Empty conversation lists must never trigger deletion.
-- `delete-library` is a dry run unless `--yes` is supplied. `clean-output-path` preserves `chatgpt.db`, its WAL/SHM/journal files, and `.gitkeep`; `restore-db` uses the SQLite backup API rather than replacing the live database file.
+- `delete-library`, and library cleanup during `upload-to-notion`, are dry runs unless `--yes` is supplied. `clean-output-path` preserves `chatgpt.db`, its WAL/SHM/journal files, and `.gitkeep`; `restore-db` uses the SQLite backup API rather than replacing the live database file.
 - Reuse the original Notion file-upload ID when retrying page creation. Treat a `400` on the upload-send step as "already uploaded". Duplicate checks fail closed when the database exposes no data sources.
 - Keep retry behavior centralized: 10 total attempts, 2–60 second delays, retry 429/5xx/transport errors, and cap `Retry-After` at 60 seconds.
 - PNG prompt injection is idempotent and atomic; non-PNG files are skipped. Relative image paths resolve under `output/`, and `..` or symlink escapes must be rejected. Absolute paths remain allowed.

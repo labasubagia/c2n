@@ -29,6 +29,8 @@ struct MockChatGpt {
     detail: Value,
     png: Vec<u8>,
     deletes: Mutex<Vec<String>>,
+    library_deletes: Mutex<Vec<Option<String>>>,
+    library_images: usize,
 }
 
 #[async_trait]
@@ -84,23 +86,27 @@ impl ChatGptApi for MockChatGpt {
     }
 
     async fn count_library_images(&self) -> Result<usize, HttpError> {
-        Ok(0)
+        Ok(self.library_images)
     }
 
     async fn count_library_images_by_query(
         &self,
         _query: Option<&str>,
     ) -> Result<usize, HttpError> {
-        Ok(0)
+        Ok(self.library_images)
     }
 
     async fn delete_library_images_by_query(
         &self,
-        _query: Option<&str>,
+        query: Option<&str>,
         _max_concurrent: usize,
         _reporter: &Reporter,
     ) -> Result<usize, HttpError> {
-        Ok(0)
+        self.library_deletes
+            .lock()
+            .unwrap()
+            .push(query.map(str::to_owned));
+        Ok(self.library_images)
     }
 }
 
@@ -204,6 +210,8 @@ fn test_context() -> TestContext {
             detail,
             png,
             deletes: Mutex::new(Vec::new()),
+            library_deletes: Mutex::new(Vec::new()),
+            library_images: 3,
         }),
         notion: Arc::new(MockNotion {
             headers: HeaderMap::new(),
@@ -221,6 +229,7 @@ fn options(upload_to_notion: bool) -> UploadOptions {
         delete_conversation: true,
         delete_library: false,
         delete_library_all: false,
+        confirm_delete_library: false,
         check_notion_api: false,
         from_history: false,
         include_uploaded: false,
@@ -306,6 +315,58 @@ async fn upload_mode_without_a_notion_client_fails_closed() {
     assert!(!context.store.is_uploaded(ACCOUNT, "img1").unwrap());
     assert!(context.chatgpt.deletes.lock().unwrap().is_empty());
     assert!(context.notion.adds.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn library_deletion_is_a_dry_run_without_yes() {
+    let context = test_context();
+    let reporter = Reporter::new(Verbosity::Quiet, None);
+    let mut options = options(true);
+    options.delete_library_all = true;
+    options.confirm_delete_library = false;
+
+    upload_to_notion_sequential(
+        &options,
+        &context.config,
+        context.store.as_ref(),
+        &context.filesystem,
+        context.chatgpt.as_ref(),
+        Some(context.notion.as_ref()),
+        &reporter,
+    )
+    .await
+    .unwrap();
+
+    assert!(
+        context.chatgpt.library_deletes.lock().unwrap().is_empty(),
+        "library deletion must not run without --yes"
+    );
+}
+
+#[tokio::test]
+async fn library_deletion_runs_with_yes() {
+    let context = test_context();
+    let reporter = Reporter::new(Verbosity::Quiet, None);
+    let mut options = options(true);
+    options.delete_library_all = true;
+    options.confirm_delete_library = true;
+
+    upload_to_notion_sequential(
+        &options,
+        &context.config,
+        context.store.as_ref(),
+        &context.filesystem,
+        context.chatgpt.as_ref(),
+        Some(context.notion.as_ref()),
+        &reporter,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        context.chatgpt.library_deletes.lock().unwrap().as_slice(),
+        &[None]
+    );
 }
 
 #[tokio::test]

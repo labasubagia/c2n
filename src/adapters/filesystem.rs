@@ -123,12 +123,25 @@ impl Filesystem {
                 // created later and may itself be a symlink.
                 return Ok(());
             }
-            if current.exists() {
-                let canonical = std::fs::canonicalize(current)?;
-                if canonical.starts_with(&root) {
-                    return Ok(());
+            match std::fs::symlink_metadata(current) {
+                Ok(_) => {
+                    // `canonicalize` follows symlinks. Using `symlink_metadata`
+                    // first means even a dangling symlink is checked instead of
+                    // being treated as an absent path and silently allowed.
+                    let canonical = std::fs::canonicalize(current).map_err(|error| {
+                        if error.kind() == std::io::ErrorKind::NotFound {
+                            FsError::Escape(path.display().to_string())
+                        } else {
+                            FsError::Io(error)
+                        }
+                    })?;
+                    if canonical.starts_with(&root) {
+                        return Ok(());
+                    }
+                    return Err(FsError::Escape(path.display().to_string()));
                 }
-                return Err(FsError::Escape(path.display().to_string()));
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(FsError::Io(error)),
             }
             match current.parent() {
                 Some(parent) if !parent.as_os_str().is_empty() => current = parent,
@@ -238,6 +251,22 @@ mod tests {
         let error = filesystem
             .resolve_under_output(Path::new("link/image.png"))
             .expect_err("symlink escape should be rejected");
+        assert!(matches!(error, FsError::Escape(_)));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_dangling_symlink_escape() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("output");
+        let outside = temp.path().join("does-not-exist-yet");
+        std::fs::create_dir_all(&root).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("link")).unwrap();
+
+        let filesystem = Filesystem::with_output_root(&root);
+        let error = filesystem
+            .resolve_under_output(Path::new("link/image.png"))
+            .expect_err("dangling symlink escape should be rejected");
         assert!(matches!(error, FsError::Escape(_)));
     }
 

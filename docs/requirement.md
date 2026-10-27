@@ -183,9 +183,11 @@ The product scope is divided into these functional pillars:
 - Provide `delete-library [QUERY]` to remove images from the ChatGPT library.
 - The standalone command is a dry run by default and requires `--yes` for actual
   deletion.
+- A blank query must be rejected rather than treated as “all images”.
 - `--max-concurrent` controls concurrent delete requests.
 - `upload-to-notion --delete-library` uses configured queries.
-- `upload-to-notion --delete-library-all` removes every library image.
+- `upload-to-notion --delete-library-all` targets every library image.
+- Upload-time library deletion is also a dry run unless `--yes` is supplied.
 
 ### 5.7 Database Maintenance
 

@@ -108,6 +108,10 @@ pub struct UploadArgs {
     #[arg(long)]
     pub delete_library_all: bool,
 
+    /// Actually delete library images. Without this flag, library deletion is a dry run.
+    #[arg(long)]
+    pub yes: bool,
+
     /// Check the Notion API even when uploaded_at is already set (default).
     #[arg(long, conflicts_with = "no_check_notion_api")]
     pub check_notion_api: bool,
@@ -326,6 +330,7 @@ async fn run_upload(config_path: &Path, args: UploadArgs) -> Result<()> {
             delete_conversation: args.delete_conversation,
             delete_library: args.delete_library,
             delete_library_all: args.delete_library_all,
+            confirm_delete_library: args.yes,
             check_notion_api: effective_check_notion_api,
             from_history: effective_from_history,
             include_uploaded: args.verify_history,
@@ -424,6 +429,13 @@ async fn run_delete_library(config_path: &Path, args: DeleteLibraryArgs) -> Resu
     if args.max_concurrent == 0 {
         bail!("--max-concurrent must be at least 1");
     }
+    let query = match args.query.as_deref() {
+        Some(query) if query.trim().is_empty() => {
+            bail!("QUERY must not be blank; omit it to target all images")
+        }
+        Some(query) => Some(query.trim()),
+        None => None,
+    };
 
     let config = Config::load(Some(config_path))?;
     let target_accounts = if let Some(account) = args.account.as_deref() {
@@ -438,10 +450,6 @@ async fn run_delete_library(config_path: &Path, args: DeleteLibraryArgs) -> Resu
     };
 
     let reporter = Reporter::new(Verbosity::Simple, None);
-    let query = args
-        .query
-        .as_deref()
-        .filter(|query| !query.trim().is_empty());
     let label = query
         .map(|query| format!("'{query}'"))
         .unwrap_or_else(|| "(all images)".to_owned());
@@ -457,19 +465,23 @@ async fn run_delete_library(config_path: &Path, args: DeleteLibraryArgs) -> Resu
 
         if !args.yes {
             let count = chatgpt.count_library_images_by_query(query).await?;
-            println!(
+            reporter.println(format!(
                 "[{account}] Dry run: {count} image(s) would be deleted matching {label}. Pass --yes to delete."
-            );
+            ));
             continue;
         }
 
         let deleted = chatgpt
             .delete_library_images_by_query(query, args.max_concurrent, &reporter)
             .await?;
-        println!("[{account}] Deleted {deleted} images matching {label}");
+        reporter.println(format!(
+            "[{account}] Deleted {deleted} images matching {label}"
+        ));
 
         let remaining = chatgpt.count_library_images().await?;
-        println!("[{account}] Total images remaining in library: {remaining}");
+        reporter.println(format!(
+            "[{account}] Total images remaining in library: {remaining}"
+        ));
     }
 
     Ok(())
@@ -597,6 +609,7 @@ mod tests {
             delete_conversation: false,
             delete_library: false,
             delete_library_all: false,
+            yes: false,
             check_notion_api: false,
             no_check_notion_api: false,
             from_history: false,

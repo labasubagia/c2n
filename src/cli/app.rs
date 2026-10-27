@@ -278,7 +278,7 @@ async fn run_accounts(args: RunArgs, reporter: &Reporter) -> Result<()> {
         let conversation_delay = args
             .conversation_delay
             .or(resolved.conversation_delay)
-            .unwrap_or(2.0);
+            .unwrap_or(0.0);
         if !conversation_delay.is_finite() || conversation_delay < 0.0 {
             bail!("--conversation-delay must be a non-negative number");
         }

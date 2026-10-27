@@ -261,8 +261,10 @@ Options:
   current discovery batch.
 - `--timezone <IANA>`: Accepted for compatibility. `status` uses it for
   date boundaries; history filtering uses absolute time.
-- `--conversation-delay <SECONDS>`: Delay between conversations. Defaults to the
-  account/shared config value, or `2.0`.
+- `--conversation-delay <SECONDS>`: Fixed delay between conversations. Defaults to
+  the account/shared config value, or no delay. When unset, `sync` automatically
+  backs off 1s between conversations after observing more than five HTTP 429
+  (too many requests) errors in a run.
 - `--fail-log <PATH>`: Append failed images to a JSONL log.
 - `-v`, `--verbose`: Show per-file decisions and skips.
 - `-q`, `--quiet`: Show only warnings, errors, and the final summary.
@@ -402,10 +404,12 @@ The only execution mode processes conversations one at a time, end to end:
 1. Fetch conversation details once per conversation.
 2. Group images from the same conversation.
 3. Download, embed the prompt, and upload each image.
-4. Wait `--conversation-delay` seconds before the next conversation.
+4. Wait before the next conversation: the configured `--conversation-delay` if
+   set; otherwise, once more than five HTTP 429 (too many requests) errors have
+   been observed, back off 1s.
 
 ```bash
-c2n sync --conversation-delay 2.0
+c2n sync --conversation-delay 1.0
 ```
 
 ### 5.2 Retry Policy

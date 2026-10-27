@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 use std::time::Duration;
+use reqwest::StatusCode;
 
 use indicatif::{ProgressBar, ProgressStyle};
 
@@ -74,6 +75,7 @@ impl ProcessStage {
 struct ProcessFailure {
     stage: ProcessStage,
     error: String,
+    rate_limited: bool,
 }
 
 impl ProcessFailure {
@@ -81,7 +83,28 @@ impl ProcessFailure {
         Self {
             stage,
             error: error.to_string(),
+            rate_limited: false,
         }
+    }
+
+    fn rate_limited(stage: ProcessStage, error: impl std::fmt::Display) -> Self {
+        Self {
+            stage,
+            error: error.to_string(),
+            rate_limited: true,
+        }
+    }
+}
+
+/// Pause before the next conversation. A user-configured delay wins; otherwise
+/// once repeated 429s (>5) have been observed, back off by 1s.
+fn pause_seconds(configured: f64, rate_limit_hits: u32) -> f64 {
+    if configured > 0.0 {
+        configured
+    } else if rate_limit_hits > 5 {
+        1.0
+    } else {
+        0.0
     }
 }
 
@@ -172,6 +195,7 @@ async fn run(
     let _progress_guard = ProgressGuard { reporter };
 
     let total = conversations.len();
+    let mut rate_limit_hits: u32 = 0;
     for (index, (conversation_id, payload)) in conversations.into_iter().enumerate() {
         let generations = match payload {
             ConversationPayload::History(generations) => generations,
@@ -212,8 +236,9 @@ async fn run(
                 "⚠️  Conversation {conversation_id} has no indexed images; skipping"
             ));
             progress.inc(1);
-            if options.conversation_delay > 0.0 && index + 1 < total {
-                tokio::time::sleep(Duration::from_secs_f64(options.conversation_delay)).await;
+            let delay = pause_seconds(options.conversation_delay, rate_limit_hits);
+            if delay > 0.0 && index + 1 < total {
+                tokio::time::sleep(Duration::from_secs_f64(delay)).await;
             }
             continue;
         }
@@ -238,6 +263,9 @@ async fn run(
                 Err(failure) => {
                     all_ok = false;
                     failed_count += 1;
+                    if failure.rate_limited {
+                        rate_limit_hits += 1;
+                    }
                     let file_name = file_name_for(generation);
                     reporter.error(format!("Failed to process {file_name}: {}", failure.error));
                     reporter.write_fail_log(&FailLogEntry::new(
@@ -270,6 +298,14 @@ async fn run(
                         }
                         remove_conversation_images(&generations, &image_folder, reporter);
                     }
+                    Err(HttpError::Status { status, .. })
+                        if status == StatusCode::TOO_MANY_REQUESTS =>
+                    {
+                        rate_limit_hits += 1;
+                        reporter.error(format!(
+                            "Failed to delete conversation {conversation_id}: too many requests"
+                        ));
+                    }
                     Err(error) => reporter.error(format!(
                         "Failed to delete conversation {conversation_id}: {error}"
                     )),
@@ -285,8 +321,9 @@ async fn run(
         }
 
         progress.inc(1);
-        if options.conversation_delay > 0.0 && index + 1 < total {
-            tokio::time::sleep(Duration::from_secs_f64(options.conversation_delay)).await;
+        let delay = pause_seconds(options.conversation_delay, rate_limit_hits);
+        if delay > 0.0 && index + 1 < total {
+            tokio::time::sleep(Duration::from_secs_f64(delay)).await;
         }
     }
 
@@ -337,10 +374,17 @@ async fn process_one(
     }
 
     if !file_path.exists() {
-        chatgpt
-            .download_image(&generation.url, &file_path)
-            .await
-            .map_err(|error| ProcessFailure::new(ProcessStage::Download, error))?;
+        match chatgpt.download_image(&generation.url, &file_path).await {
+            Ok(()) => {}
+            Err(error) => {
+                if let HttpError::Status { status, .. } = &error
+                    && *status == StatusCode::TOO_MANY_REQUESTS
+                {
+                    return Err(ProcessFailure::rate_limited(ProcessStage::Download, error));
+                }
+                return Err(ProcessFailure::new(ProcessStage::Download, error));
+            }
+        }
     }
 
     match add_prompt_to_image(&file_path, &generation.prompt) {
@@ -469,5 +513,15 @@ mod tests {
             file_name_for(&generation_with_id("normal-id_1")),
             "normal-id_1.png"
         );
+    }
+
+    #[test]
+    fn pause_seconds_prefers_configured_then_backs_off_after_repeated_429s() {
+        // Configured delay always wins.
+        assert_eq!(pause_seconds(0.5, 100), 0.5);
+        // No configured delay: silent until >5 rate-limit hits.
+        assert_eq!(pause_seconds(0.0, 0), 0.0);
+        assert_eq!(pause_seconds(0.0, 5), 0.0);
+        assert_eq!(pause_seconds(0.0, 6), 1.0);
     }
 }

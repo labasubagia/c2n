@@ -10,6 +10,8 @@ fn help_lists_core_commands() {
         .arg("--help")
         .assert()
         .success()
+        .stdout(predicate::str::contains("sync"))
+        .stdout(predicate::str::contains("status"))
         .stdout(predicate::str::contains("img"))
         .stdout(predicate::str::contains("db"));
 }
@@ -21,17 +23,14 @@ fn img_help_lists_subcommands() {
         .args(["img", "--help"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("sync"))
-        .stdout(predicate::str::contains("status"))
-        .stdout(predicate::str::contains("clear"))
-        .stdout(predicate::str::contains("library"));
+        .stdout(predicate::str::contains("clear"));
 }
 
 #[test]
 fn library_help_lists_delete_subcommand() {
     Command::cargo_bin("c2n")
         .unwrap()
-        .args(["img", "library", "--help"])
+        .args(["library", "--help"])
         .assert()
         .success()
         .stdout(predicate::str::contains("delete"));
@@ -41,7 +40,7 @@ fn library_help_lists_delete_subcommand() {
 fn rejects_conflicting_verbosity_before_loading_config() {
     Command::cargo_bin("c2n")
         .unwrap()
-        .args(["img", "sync", "--verbose", "--quiet"])
+        .args(["sync", "--verbose", "--quiet"])
         .assert()
         .failure()
         .stderr(predicate::str::contains(
@@ -53,7 +52,7 @@ fn rejects_conflicting_verbosity_before_loading_config() {
 fn rejects_all_without_history_mode_before_loading_config() {
     Command::cargo_bin("c2n")
         .unwrap()
-        .args(["img", "sync", "--all"])
+        .args(["sync", "--all"])
         .assert()
         .failure()
         .stderr(predicate::str::contains(
@@ -65,7 +64,7 @@ fn rejects_all_without_history_mode_before_loading_config() {
 fn rejects_blank_delete_library_query_before_loading_config() {
     Command::cargo_bin("c2n")
         .unwrap()
-        .args(["img", "library", "delete", "   ", "--yes"])
+        .args(["library", "delete", "   ", "--yes"])
         .assert()
         .failure()
         .stderr(predicate::str::contains(
@@ -99,7 +98,7 @@ fn creates_config_data_and_image_dirs() {
         .unwrap()
         .env("C2N_CONFIG_DIR", &cfg)
         .env("C2N_DATA_DIR", &data)
-        .args(["img", "status"])
+        .args(["status"])
         .assert()
         .failure();
     assert!(cfg.is_dir());

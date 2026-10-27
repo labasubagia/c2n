@@ -21,7 +21,7 @@ the useful CLI surface and safety properties while using typed Rust APIs,
 - Optionally hide processed ChatGPT conversations with a fail-safe verification
   step.
 - Optionally remove images from the ChatGPT library, with dry-run defaults for
-  both the standalone `img library delete` command and post-run library cleanup.
+  both the standalone `library delete` command and post-run library cleanup.
 - Back up and restore the SQLite database with the SQLite backup API.
 
 ## Requirements
@@ -88,67 +88,67 @@ Show help:
 
 ```bash
 c2n --help
-c2n img sync --help
+c2n sync --help
 ```
 
 Upload recent generations for one account:
 
 ```bash
-c2n img sync --account personal@example.com --limit 100
+c2n sync --account personal@example.com --limit 100
 ```
 
 Process every configured account sequentially:
 
 ```bash
-c2n img sync
+c2n sync
 ```
 
 Replay non-uploaded items from the local database (last 3 days):
 
 ```bash
-c2n img sync --from-history
+c2n sync --from-history
 ```
 
 Replay all non-uploaded history:
 
 ```bash
-c2n img sync --from-history --all
+c2n sync --from-history --all
 ```
 
 Audit and repair uploaded items against Notion (last 3 days):
 
 ```bash
-c2n img sync --verify-history
+c2n sync --verify-history
 ```
 
 Audit all uploaded history:
 
 ```bash
-c2n img sync --verify-history --all
+c2n sync --verify-history --all
 ```
 
 Hide conversations after every image in them is verified uploaded:
 
 ```bash
-c2n img sync --delete-conversation
+c2n sync --delete-conversation
 ```
 
 Delete library images matching a query (dry run without `--yes`):
 
 ```bash
-c2n img library delete "old prompt"
+c2n library delete "old prompt"
 ```
 
 Delete all library images (dry run without `--yes`):
 
 ```bash
-c2n img library delete
+c2n library delete
 ```
 
 Check account cooldowns:
 
 ```bash
-c2n img status --timezone Asia/Singapore
+c2n status --timezone Asia/Singapore
 ```
 
 Clean the output directory while preserving the database:
@@ -167,9 +167,9 @@ c2n db restore ./backups/chatgpt.db
 Dry-run a library deletion, then actually delete:
 
 ```bash
-c2n img library delete "old prompt"
-c2n img library delete "old prompt" --yes
-c2n img library delete --yes          # all library images
+c2n library delete "old prompt"
+c2n library delete "old prompt" --yes
+c2n library delete --yes          # all library images
 ```
 
 ## Behavior and safety notes
@@ -182,7 +182,7 @@ c2n img library delete --yes          # all library images
 - The SQLite database and images default to the platform data dir
   (`~/.local/share/c2n/` on Linux; the config dir on macOS/Windows).
 - Development overrides: `C2N_CONFIG_DIR` and `C2N_DATA_DIR` (env wins). Example:
-  `C2N_CONFIG_DIR=./ C2N_DATA_DIR=./output c2n img sync`.
+  `C2N_CONFIG_DIR=./ C2N_DATA_DIR=./output c2n sync`.
   Both values are relative to the current working directory.
 - Produced files: `config.toml` (your input configuration), `chatgpt.db`
   (SQLite state: downloaded generations, `uploaded_at`, data sources, history),
@@ -193,13 +193,13 @@ c2n img library delete --yes          # all library images
   enabled by default.
 - `--no-check-notion-api` trusts the local `uploaded_at` marker. The default is
   to query Notion to prevent duplicates when local state is stale.
-- `img sync` always uploads and requires Notion credentials and a database ID.
+- `sync` always uploads and requires Notion credentials and a database ID.
 
 ### Conversation deletion
 
 `--delete-conversation` is deliberately conservative:
 
-- It is only available on `img sync`.
+- It is only available on `sync`.
 - It is ignored in history replay mode.
 - A conversation is hidden only when every image in it was uploaded or verified
   already uploaded.
@@ -210,7 +210,7 @@ c2n img library delete --yes          # all library images
 
 ### Library deletion
 
-- `img library delete` is a dry run unless `--yes` is supplied.
+- `library delete` is a dry run unless `--yes` is supplied.
 - `--max-concurrent` controls concurrent delete requests (default 10).
 
 ### Prompt metadata
@@ -241,7 +241,7 @@ c2n img library delete --yes          # all library images
   shortcut for `--from-history --check-notion-api` in intent.
 - `--all` removes the 3-day history window and requires `--from-history` or
   `--verify-history`.
-- `--timezone` is accepted for compatibility. `img status` uses it for date
+- `--timezone` is accepted for compatibility. `status` uses it for date
   boundaries; history filtering uses absolute time.
 
 ## Development

@@ -33,30 +33,30 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Manage image generation, status, and local output.
-    #[command(subcommand)]
-    Img(ImgCommand),
-
-    /// Manage the local SQLite database.
-    #[command(subcommand)]
-    Db(DbCommand),
-}
-
-#[derive(Debug, Subcommand)]
-#[command(arg_required_else_help = true)]
-pub enum ImgCommand {
     /// Sync image generations to Notion.
     Sync(SyncArgs),
 
     /// Show per-account readiness to generate new images.
     Status(AccountStatusArgs),
 
-    /// Clean the output directory, preserving the database.
-    Clear,
+    /// Manage local output files.
+    #[command(subcommand)]
+    Img(ImgCommand),
+
+    /// Manage the local SQLite database.
+    #[command(subcommand)]
+    Db(DbCommand),
 
     /// Manage the ChatGPT library.
     #[command(subcommand)]
     Library(LibraryCommand),
+}
+
+#[derive(Debug, Subcommand)]
+#[command(arg_required_else_help = true)]
+pub enum ImgCommand {
+    /// Clean the output directory, preserving the database.
+    Clear,
 }
 
 #[derive(Debug, Subcommand)]
@@ -177,17 +177,17 @@ pub async fn run(cli: Cli) -> Result<()> {
     crate::shared::constants::ensure_dirs()?;
 
     match command {
-        Command::Img(cmd) => run_img(cmd).await,
+        Command::Sync(args) => run_sync(args).await,
+        Command::Status(args) => run_account_status(args),
+        Command::Img(cmd) => run_img(cmd),
         Command::Db(cmd) => run_db(cmd),
+        Command::Library(cmd) => run_library(cmd).await,
     }
 }
 
-async fn run_img(cmd: ImgCommand) -> Result<()> {
+fn run_img(cmd: ImgCommand) -> Result<()> {
     match cmd {
-        ImgCommand::Sync(args) => run_sync(args).await,
-        ImgCommand::Status(args) => run_account_status(args),
         ImgCommand::Clear => run_clean_output(),
-        ImgCommand::Library(cmd) => run_library(cmd).await,
     }
 }
 
@@ -555,7 +555,7 @@ fn print_activity_table(rows: &[ActivityRow], title: &str) {
 
 fn verbosity_for(command: &Command) -> Verbosity {
     match command {
-        Command::Img(ImgCommand::Sync(args)) => verbosity(args.verbose, args.quiet),
+        Command::Sync(args) => verbosity(args.verbose, args.quiet),
         _ => Verbosity::Simple,
     }
 }

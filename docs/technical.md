@@ -137,7 +137,7 @@ checks. Expired rows are deleted lazily.
 
 ## 4. Feature Flows
 
-### 4.1 Image Sync Pipeline (`img sync`)
+### 4.1 Image Sync Pipeline (`sync`)
 
 #### 4.1.1 Discovery
 
@@ -305,7 +305,7 @@ file name. If the database exposes no data sources, the duplicate check fails
 closed instead of uploading without protection. Corrupt cached data-source JSON
 is discarded and refreshed.
 
-### 4.3 Account Status (`img status`)
+### 4.3 Account Status (`status`)
 
 1. Resolve the requested IANA timezone, then fall back to the system timezone and
    finally UTC.
@@ -338,7 +338,7 @@ is marked ready, matching the original tool's behavior.
 - **`db restore <SOURCE>`**: uses the SQLite backup API into the live
   connection, then runs `PRAGMA wal_checkpoint(TRUNCATE)`. This avoids replacing
   the database file underneath open handles.
-- **`img library delete [QUERY]`**: dry-runs by default and prints a count. With
+- **`library delete [QUERY]`**: dry-runs by default and prints a count. With
   `--yes`, deletes matching images concurrently and prints the remaining count.
   A blank query is rejected instead of being treated as “all images”. Deletes
   use the ChatGPT `delete_stream` endpoint, parse SSE `data:` events, and show a

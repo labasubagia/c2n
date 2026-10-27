@@ -41,7 +41,7 @@ CI runs the four commands above in that order. Do not use `cargo test` alone as 
 - Set `uploaded_at` only after a successful Notion page creation or a positive remote duplicate check.
 - Delete a conversation only when every image is uploaded or verified uploaded and the run is not history replay. Empty conversation lists must never trigger deletion.
 - Remove local images for a conversation only after ChatGPT confirms the conversation was deleted. If the delete request fails, keep the files. Ignore missing files, and warn and continue on other removal errors.
-- `img library delete`, and library cleanup during `img sync`, are dry runs unless `--yes` is supplied. `img clear` preserves `chatgpt.db`, its WAL/SHM/journal files, and `.gitkeep`; `db restore` uses the SQLite backup API rather than replacing the live database file.
+- `library delete`, and library cleanup during `sync`, are dry runs unless `--yes` is supplied. `img clear` preserves `chatgpt.db`, its WAL/SHM/journal files, and `.gitkeep`; `db restore` uses the SQLite backup API rather than replacing the live database file.
 - Reuse the original Notion file-upload ID when retrying page creation. Treat a `400` on the upload-send step as "already uploaded". Duplicate checks fail closed when the database exposes no data sources.
 - Keep retry behavior centralized: 10 total attempts, 2–60 second delays, retry 429/5xx/transport errors, and cap `Retry-After` at 60 seconds.
 - PNG prompt injection is idempotent and atomic; non-PNG files are skipped. Relative image paths resolve under `output/`, and `..` or symlink escapes must be rejected. Absolute paths remain allowed.

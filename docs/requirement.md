@@ -174,7 +174,7 @@ The product scope is divided into these functional pillars:
 - Provide `--delete-conversation` to hide processed conversations from ChatGPT.
 - Conversation deletion must be **fail-safe**: it is blocked unless every image
   in the conversation has been uploaded or verified already uploaded.
-- Conversation deletion is only available on `img sync`.
+- Conversation deletion is only available on `sync`.
 - Deletion is ignored during history replay (`--from-history` or
   `--verify-history`).
 - A 404 response containing `conversation_deleted` is treated as success.
@@ -184,7 +184,7 @@ The product scope is divided into these functional pillars:
 
 ### 5.6 Library Maintenance
 
-- Provide `img library delete [QUERY]` to remove images from the ChatGPT library.
+- Provide `library delete [QUERY]` to remove images from the ChatGPT library.
 - The standalone command is a dry run by default and requires `--yes` for actual
   deletion.
 - A blank query must be rejected rather than treated as “all images”.

@@ -17,7 +17,6 @@ use crate::config::Config;
 use crate::domain::models::RequiredVar;
 use crate::services::account_status::{ActivityRow, get_account_activity_statuses};
 use crate::services::sync::{SyncOptions, sync};
-use crate::shared::constants::DEFAULT_CONFIG_PATH;
 use crate::shared::time::resolve_timezone;
 use crate::shared::verbosity::{Reporter, Verbosity};
 
@@ -28,15 +27,6 @@ use crate::shared::verbosity::{Reporter, Verbosity};
     about = "Download ChatGPT image generations, embed prompts, and archive them in Notion"
 )]
 pub struct Cli {
-    /// Path to the TOML configuration file.
-    #[arg(
-        long,
-        global = true,
-        value_name = "PATH",
-        default_value = DEFAULT_CONFIG_PATH
-    )]
-    pub config: PathBuf,
-
     #[command(subcommand)]
     pub command: Command,
 }
@@ -76,14 +66,6 @@ pub enum Command {
 
 #[derive(Debug, Args)]
 pub struct SyncArgs {
-    /// Path to a history folder (accepted for compatibility; SQLite is the source of truth).
-    #[arg(long)]
-    pub history_folder: Option<String>,
-
-    /// Image output folder (absolute, or relative to output/).
-    #[arg(long)]
-    pub image_folder: Option<String>,
-
     /// Notion database ID (overrides the configured database).
     #[arg(long)]
     pub db_id: Option<String>,
@@ -184,23 +166,22 @@ pub struct DeleteLibraryArgs {
 }
 
 pub async fn run(cli: Cli) -> Result<()> {
-    let Cli { config, command } = cli;
+    let Cli { command } = cli;
     init_tracing(verbosity_for(&command));
 
     match command {
-        Command::Sync(args) => run_sync(&config, args).await,
-        Command::AccountStatus(args) => run_account_status(&config, args),
+        Command::Sync(args) => run_sync(args).await,
+        Command::AccountStatus(args) => run_account_status(args),
         Command::CleanOutputPath => run_clean_output(),
         Command::BackupDb { target } => run_backup(&target),
         Command::RestoreDb { source } => run_restore(&source),
-        Command::DeleteLibrary(args) => run_delete_library(&config, args).await,
+        Command::DeleteLibrary(args) => run_delete_library(args).await,
     }
 }
 
 #[derive(Debug)]
 struct RunArgs {
     db_id: Option<String>,
-    image_folder: Option<String>,
     delete_conversation: bool,
     delete_library: bool,
     delete_library_all: bool,
@@ -215,22 +196,16 @@ struct RunArgs {
     account: Option<String>,
 }
 
-async fn run_sync(config_path: &Path, args: SyncArgs) -> Result<()> {
+async fn run_sync(args: SyncArgs) -> Result<()> {
     validate_sync_args(&args)?;
 
     let reporter = Reporter::new(verbosity(args.verbose, args.quiet), args.fail_log.clone());
-    warn_compatibility_flags(
-        &reporter,
-        args.history_folder.is_some(),
-        args.timezone.is_some(),
-    );
+    warn_compatibility_flags(&reporter, args.timezone.is_some());
 
     let from_history = args.from_history || args.verify_history;
     run_accounts(
-        config_path,
         RunArgs {
             db_id: args.db_id,
-            image_folder: args.image_folder,
             delete_conversation: args.delete_conversation,
             delete_library: args.delete_library,
             delete_library_all: args.delete_library_all,
@@ -255,12 +230,7 @@ async fn run_sync(config_path: &Path, args: SyncArgs) -> Result<()> {
     .await
 }
 
-fn warn_compatibility_flags(reporter: &Reporter, has_history_folder: bool, has_timezone: bool) {
-    if has_history_folder {
-        reporter.verbose(
-            "--history-folder is accepted for compatibility; the SQLite database is the source of truth",
-        );
-    }
+fn warn_compatibility_flags(reporter: &Reporter, has_timezone: bool) {
     if has_timezone {
         reporter.verbose(
             "--timezone is accepted for compatibility; keep-days filtering uses absolute time",
@@ -268,8 +238,8 @@ fn warn_compatibility_flags(reporter: &Reporter, has_history_folder: bool, has_t
     }
 }
 
-async fn run_accounts(config_path: &Path, args: RunArgs, reporter: &Reporter) -> Result<()> {
-    let config = Config::load(Some(config_path))?;
+async fn run_accounts(args: RunArgs, reporter: &Reporter) -> Result<()> {
+    let config = Config::load_default()?;
     let filesystem = Filesystem::new();
     let store = Arc::new(SqliteStore::open(filesystem.db_path())?);
     store.init_db()?;
@@ -327,7 +297,6 @@ async fn run_accounts(config_path: &Path, args: RunArgs, reporter: &Reporter) ->
         let options = SyncOptions {
             account: account_name.clone(),
             db_id,
-            image_folder: args.image_folder.clone(),
             delete_conversation: args.delete_conversation,
             delete_library: args.delete_library,
             delete_library_all: args.delete_library_all,
@@ -379,8 +348,8 @@ fn verbosity(verbose: bool, quiet: bool) -> Verbosity {
     }
 }
 
-fn run_account_status(config_path: &Path, args: AccountStatusArgs) -> Result<()> {
-    let config = Config::load(Some(config_path))?;
+fn run_account_status(args: AccountStatusArgs) -> Result<()> {
+    let config = Config::load_default()?;
     let filesystem = Filesystem::new();
     let store = SqliteStore::open(filesystem.db_path())?;
     store.init_db()?;
@@ -432,7 +401,7 @@ fn run_restore(source: &Path) -> Result<()> {
     Ok(())
 }
 
-async fn run_delete_library(config_path: &Path, args: DeleteLibraryArgs) -> Result<()> {
+async fn run_delete_library(args: DeleteLibraryArgs) -> Result<()> {
     if args.max_concurrent == 0 {
         bail!("--max-concurrent must be at least 1");
     }
@@ -444,7 +413,7 @@ async fn run_delete_library(config_path: &Path, args: DeleteLibraryArgs) -> Resu
         None => None,
     };
 
-    let config = Config::load(Some(config_path))?;
+    let config = Config::load_default()?;
     let target_accounts = if let Some(account) = args.account.as_deref() {
         config.account(account)?;
         vec![account.to_owned()]
@@ -615,8 +584,6 @@ mod tests {
 
     fn sync_args() -> SyncArgs {
         SyncArgs {
-            history_folder: None,
-            image_folder: None,
             db_id: None,
             delete_conversation: false,
             delete_library: false,

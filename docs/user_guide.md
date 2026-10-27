@@ -182,7 +182,42 @@ authorization_token = "eyJhbGciOiJSUzI1_other..."
 - `notion.database_id` is required for `sync` unless `--db-id` or
   `[shared].notion_database_id` supplies one.
 - Every account key must be a valid email address.
-- `--config <PATH>` selects a different configuration file.
+
+### Configuration and data locations
+
+By default `c2n` reads `config.toml` from the platform config directory and
+stores its SQLite database and images in the platform data directory:
+
+| OS      | Config                                | Data                          |
+| ------- | ------------------------------------- | ----------------------------- |
+| Linux   | `~/.config/c2n/config.toml`           | `~/.local/share/c2n/`         |
+| macOS   | `~/Library/Application Support/c2n/`  | same as Config                |
+| Windows | `%APPDATA%\c2n\config.toml`           | `%APPDATA%\c2n\`             |
+
+Development overrides (the environment wins over the defaults):
+
+- `C2N_CONFIG_DIR` — directory containing `config.toml`.
+- `C2N_DATA_DIR` — directory for the SQLite database and downloaded images.
+
+Example dev workflow from the project root:
+
+```bash
+C2N_CONFIG_DIR=./ C2N_DATA_DIR=./output c2n sync
+```
+
+Both values are relative to the current working directory.
+
+### Produced files
+
+- `config.toml` — your input configuration (accounts, Notion credentials, and
+  per-account folder overrides). `c2n` reads it but does not write to it. See
+  `config.toml.example` for the structure.
+- `chatgpt.db` — local SQLite state: which image generations were downloaded,
+  their `uploaded_at` status, Notion data sources, and the history cache. It is
+  the source of truth for sync/dedup decisions and is created on first run.
+- `images/` — downloaded image files (PNG/JPEG/WebP). Each non-PNG is skipped;
+  each PNG has the generation prompt embedded in its metadata during sync.
+  This is a working directory; the authoritative archive is Notion.
 
 ---
 
@@ -212,8 +247,6 @@ Options:
   accounts, sequentially.
 - `--limit <INT>`: Maximum number of recent image generations to fetch from the
   live API. Default `100`.
-- `--image-folder <PATH>`: Image output folder. A relative path is resolved
-  under `output/`; an absolute path is used as-is.
 - `--db-id <ID>`: Override the configured Notion database ID.
 - `--delete-conversation`: Hide a conversation in ChatGPT after every image in
   it is verified uploaded, then remove that conversation's local image files.
@@ -244,8 +277,6 @@ Options:
 - `--fail-log <PATH>`: Append failed images to a JSONL log.
 - `-v`, `--verbose`: Show per-file decisions and skips.
 - `-q`, `--quiet`: Show only warnings, errors, and the final summary.
-- `--history-folder <PATH>`: Accepted for compatibility; SQLite is the source of
-  truth.
 
 Examples:
 

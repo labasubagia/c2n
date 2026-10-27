@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use email_address::EmailAddress;
 
 use crate::domain::models::{AccountConfig, AppConfig, NotionConfig, ResolvedConfig, SharedConfig};
-use crate::shared::constants::DEFAULT_CONFIG_PATH;
+use crate::shared::constants::config_path;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
@@ -42,14 +42,22 @@ pub struct Config {
 }
 
 impl Config {
-    /// Load `config.toml` from the current working directory.
+    /// Load `config.toml` from `$C2N_CONFIG_DIR` or the platform config dir.
     pub fn load_default() -> Result<Self, ConfigError> {
-        Self::load(Some(Path::new(DEFAULT_CONFIG_PATH)))
+        let path = config_path();
+        Self::load(Some(&path))
     }
 
     /// Load configuration from `path`.
     pub fn load(path: Option<&Path>) -> Result<Self, ConfigError> {
-        let path = path.unwrap_or_else(|| Path::new(DEFAULT_CONFIG_PATH));
+        let default_path;
+        let path = match path {
+            Some(path) => path,
+            None => {
+                default_path = config_path();
+                default_path.as_path()
+            }
+        };
         if !path.exists() {
             return Err(ConfigError::MissingFile(path.display().to_string()));
         }

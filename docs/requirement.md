@@ -130,7 +130,9 @@ The product scope is divided into these functional pillars:
 - Keep authorization tokens and account secrets local to the host machine.
 - Require every `[accounts.<key>]` key to be a valid email address. Loading a
   config with a non-email key must fail with a clear validation error.
-- Support `--config <PATH>` for alternate configuration files.
+- Locate `config.toml` in the platform config dir, overridable via
+  `C2N_CONFIG_DIR` (development). Store data in the platform data dir
+  (overridable via `C2N_DATA_DIR`).
 
 ### 5.2 Local Asset Download & Context Enrichment
 

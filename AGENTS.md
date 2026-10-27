@@ -52,7 +52,7 @@ CI runs the four commands above in that order. Do not use `cargo test` alone as 
 - `config.toml` and `output/` are gitignored and may contain secrets or runtime state. Never commit them or print secrets from them; use `config.toml.example` for structure.
 - Account keys must be valid email addresses. Resolution precedence is CLI override, then per-account value, then shared value; blank per-account strings fall back to shared.
 - `--check-notion-api` is a compatibility flag; remote checks are enabled by default. `--no-check-notion-api` is the actual opt-out.
-- History replay defaults to the last 3 days; `--all` requires `--from-history` or `--verify-history`. `--history-folder` and `--timezone` are accepted for compatibility, but SQLite is the source of truth and history filtering uses absolute time.
+- History replay defaults to the last 3 days; `--all` requires `--from-history` or `--verify-history`. `--timezone` is accepted for compatibility; SQLite is the source of truth and history filtering uses absolute time. Config/data dirs are platform defaults, overridable via `C2N_CONFIG_DIR`/`C2N_DATA_DIR` for development. Example dev invocation: `C2N_CONFIG_DIR=./ C2N_DATA_DIR=./output c2n sync`.
 - `account-status` reads `output/chatgpt.db` and needs a valid config with accounts, but does not use ChatGPT or Notion credentials.
 - Do not run live upload, library-delete, restore, or cleanup commands against real data unless the user explicitly asks. Use temporary directories and mocks in tests.
 

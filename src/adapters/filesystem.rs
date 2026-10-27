@@ -2,7 +2,7 @@
 
 use std::path::{Component, Path, PathBuf};
 
-use crate::shared::constants::{DB_FILE_NAME, OUTPUT_PATH};
+use crate::shared::constants::DB_FILE_NAME;
 
 #[derive(Debug, thiserror::Error)]
 pub enum FsError {
@@ -28,10 +28,9 @@ impl Default for Filesystem {
 
 impl Filesystem {
     pub fn new() -> Self {
-        let output_root = std::env::current_dir()
-            .map(|cwd| cwd.join(OUTPUT_PATH))
-            .unwrap_or_else(|_| PathBuf::from(OUTPUT_PATH));
-        Self { output_root }
+        Self {
+            output_root: crate::shared::constants::data_dir(),
+        }
     }
 
     pub fn with_output_root(output_root: impl Into<PathBuf>) -> Self {
@@ -56,17 +55,9 @@ impl Filesystem {
     /// `output/` for consistency and safety.
     pub fn resolve_image_folder(
         &self,
-        cli_image_folder: Option<&str>,
         configured_image_folder: Option<&str>,
     ) -> Result<PathBuf, FsError> {
-        let folder = if let Some(folder) = cli_image_folder {
-            let expanded = expand_tilde(folder);
-            if expanded.is_absolute() {
-                expanded
-            } else {
-                self.resolve_under_output(&expanded)?
-            }
-        } else if let Some(folder) = configured_image_folder {
+        let folder = if let Some(folder) = configured_image_folder {
             let expanded = expand_tilde(folder);
             if expanded.is_absolute() {
                 expanded
@@ -226,12 +217,12 @@ mod tests {
     }
 
     #[test]
-    fn allows_absolute_cli_image_folder() {
+    fn allows_absolute_configured_image_folder() {
         let temp = tempfile::tempdir().unwrap();
         let filesystem = Filesystem::with_output_root(temp.path().join("output"));
         let absolute = temp.path().join("absolute-images");
         let resolved = filesystem
-            .resolve_image_folder(Some(absolute.to_str().unwrap()), None)
+            .resolve_image_folder(Some(absolute.to_str().unwrap()))
             .unwrap();
         assert_eq!(resolved, absolute);
         assert!(resolved.is_dir());

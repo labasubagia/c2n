@@ -385,16 +385,15 @@ is marked ready, matching the original tool's behavior.
 
 ### 5.4 Path Safety
 
-- The output root is `<current working directory>/output`.
-- Relative CLI and configured image folders are resolved under the output root.
+- The output root is the platform data dir (`$C2N_DATA_DIR` overrides it).
+- Configured (TOML) image folders are resolved under the output root when
+  relative; absolute configured paths are used as-is.
 - `..` components that would escape the output root are rejected.
 - Symlinks inside the output root are resolved and rejected if they escape it,
   including dangling symlinks whose target does not exist yet.
 - Downloaded filenames sanitize API-provided IDs so they cannot contain path
   separators.
-- Absolute paths are allowed for explicit `--image-folder` values and configured
-  absolute paths.
-- `~` is expanded for configured paths and CLI values.
+- `~` is expanded for configured paths.
 
 ### 5.5 Testing Strategy
 

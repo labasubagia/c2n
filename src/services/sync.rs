@@ -25,7 +25,6 @@ use crate::shared::verbosity::{FailLogEntry, Reporter};
 pub struct SyncOptions {
     pub account: String,
     pub db_id: String,
-    pub image_folder: Option<String>,
     pub delete_conversation: bool,
     pub delete_library: bool,
     pub delete_library_all: bool,
@@ -142,10 +141,7 @@ async fn run(
     let resolved = config.account(&options.account)?;
     store.init_db()?;
 
-    let image_folder = filesystem.resolve_image_folder(
-        options.image_folder.as_deref(),
-        resolved.image_folder.as_deref(),
-    )?;
+    let image_folder = filesystem.resolve_image_folder(resolved.image_folder.as_deref())?;
     let mut uploaded_ids = get_uploaded_generation_ids(store, &options.account)?;
 
     let (conversations, mut existing_ids) = if options.from_history {

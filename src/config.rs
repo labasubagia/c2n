@@ -87,12 +87,10 @@ impl Config {
             .accounts
             .iter()
             .map(|(name, account)| {
-                (
-                    name.clone(),
-                    resolve_account(name, account, &app.shared, &app.notion),
-                )
+                resolve_account(name, account, &app.shared, &app.notion)
+                    .map(|resolved| (name.clone(), resolved))
             })
-            .collect();
+            .collect::<Result<_, _>>()?;
 
         Ok(Self { path, accounts })
     }
@@ -121,30 +119,36 @@ fn resolve_account(
     account: &AccountConfig,
     shared: &SharedConfig,
     notion: &NotionConfig,
-) -> ResolvedConfig {
-    let mut notion = notion.clone();
-    let account_database_id = account
-        .notion_database_id
-        .as_deref()
-        .filter(|value| !value.trim().is_empty());
-    let shared_database_id = shared
-        .notion_database_id
-        .as_deref()
-        .filter(|value| !value.trim().is_empty());
-    if let Some(database_id) = account_database_id.or(shared_database_id) {
-        notion.database_id = Some(database_id.to_owned());
+) -> Result<ResolvedConfig, ConfigError> {
+    let mut missing = Vec::new();
+
+    let authorization_token = account.authorization_token.trim().to_owned();
+    if authorization_token.is_empty() {
+        missing.push("CHATGPT_AUTHORIZATION_TOKEN");
     }
 
-    let history_folder = account
-        .history_folder
-        .clone()
-        .filter(|value| !value.trim().is_empty())
-        .or_else(|| {
-            shared
-                .history_folder
-                .clone()
-                .filter(|value| !value.trim().is_empty())
-        });
+    let user_agent = nonempty(&account.user_agent).or_else(|| nonempty(&shared.user_agent));
+    let cookie_string_base64 =
+        nonempty(&account.cookie_string_base64).or_else(|| nonempty(&shared.cookie_string_base64));
+    let notion_api_key = nonempty(&notion.api_key);
+    let notion_database_id = nonempty(&account.notion_database_id)
+        .or_else(|| nonempty(&shared.notion_database_id))
+        .or_else(|| nonempty(&notion.database_id));
+
+    for (label, present) in [
+        ("CHATGPT_USER_AGENT", user_agent.is_some()),
+        ("CHATGPT_COOKIE_STRING", cookie_string_base64.is_some()),
+        ("NOTION_API_KEY", notion_api_key.is_some()),
+        ("NOTION_DATABASE_ID", notion_database_id.is_some()),
+    ] {
+        if !present {
+            missing.push(label);
+        }
+    }
+    if !missing.is_empty() {
+        return Err(ConfigError::MissingRequired(missing.join(", ")));
+    }
+
     let image_folder = account
         .image_folder
         .clone()
@@ -155,33 +159,27 @@ fn resolve_account(
                 .clone()
                 .filter(|value| !value.trim().is_empty())
         });
-
-    let mut account = account.clone();
-    if account
-        .user_agent
-        .as_deref()
-        .is_none_or(|value| value.trim().is_empty())
-    {
-        account.user_agent = shared.user_agent.clone();
-    }
-    if account
-        .cookie_string_base64
-        .as_deref()
-        .is_none_or(|value| value.trim().is_empty())
-    {
-        account.cookie_string_base64 = shared.cookie_string_base64.clone();
-    }
-
     let conversation_delay = account.conversation_delay.or(shared.conversation_delay);
 
-    ResolvedConfig {
+    Ok(ResolvedConfig {
         account_name: name.to_owned(),
-        account,
-        notion,
-        history_folder,
+        authorization_token,
+        user_agent: user_agent.unwrap(),
+        cookie_string_base64: cookie_string_base64.unwrap(),
+        notion_api_key: notion_api_key.unwrap(),
+        notion_version: notion.version.clone(),
+        notion_database_id: notion_database_id.unwrap(),
         image_folder,
         conversation_delay,
-    }
+    })
+}
+
+fn nonempty(value: &Option<String>) -> Option<String> {
+    value
+        .as_deref()
+        .map(str::trim)
+        .filter(|trimmed| !trimmed.is_empty())
+        .map(str::to_owned)
 }
 
 #[cfg(test)]
@@ -190,14 +188,15 @@ mod tests {
 
     fn app_with(account_name: &str) -> AppConfig {
         let mut app = AppConfig::default();
+        app.notion.api_key = Some("key".to_owned());
+        app.notion.database_id = Some("db".to_owned());
         app.accounts.insert(
             account_name.to_owned(),
             AccountConfig {
                 authorization_token: "token".to_owned(),
-                user_agent: None,
-                cookie_string_base64: None,
+                user_agent: Some("agent".to_owned()),
+                cookie_string_base64: Some("cookie".to_owned()),
                 notion_database_id: None,
-                history_folder: None,
                 image_folder: None,
                 conversation_delay: None,
             },
@@ -219,7 +218,7 @@ mod tests {
         app.shared.image_folder = Some("images".to_owned());
         let config = Config::from_app(PathBuf::from("config.toml"), app).unwrap();
         let resolved = config.account("user@example.com").unwrap();
-        assert_eq!(resolved.account.user_agent.as_deref(), Some("agent"));
+        assert_eq!(resolved.user_agent, "agent");
         assert_eq!(resolved.image_folder.as_deref(), Some("images"));
     }
 
@@ -228,23 +227,17 @@ mod tests {
         let mut app = app_with("user@example.com");
         app.shared.user_agent = Some("shared-agent".to_owned());
         app.shared.cookie_string_base64 = Some("shared-cookie".to_owned());
-        app.shared.history_folder = Some("shared-history".to_owned());
         app.shared.image_folder = Some("shared-images".to_owned());
         {
             let account = app.accounts.get_mut("user@example.com").unwrap();
             account.user_agent = Some("   ".to_owned());
             account.cookie_string_base64 = Some(String::new());
-            account.history_folder = Some(String::new());
             account.image_folder = Some("  ".to_owned());
         }
         let config = Config::from_app(PathBuf::from("config.toml"), app).unwrap();
         let resolved = config.account("user@example.com").unwrap();
-        assert_eq!(resolved.account.user_agent.as_deref(), Some("shared-agent"));
-        assert_eq!(
-            resolved.account.cookie_string_base64.as_deref(),
-            Some("shared-cookie")
-        );
-        assert_eq!(resolved.history_folder.as_deref(), Some("shared-history"));
+        assert_eq!(resolved.user_agent, "shared-agent");
+        assert_eq!(resolved.cookie_string_base64, "shared-cookie");
         assert_eq!(resolved.image_folder.as_deref(), Some("shared-images"));
     }
 
@@ -258,7 +251,7 @@ mod tests {
             .notion_database_id = Some("account".to_owned());
         let config = Config::from_app(PathBuf::from("config.toml"), app).unwrap();
         let resolved = config.account("user@example.com").unwrap();
-        assert_eq!(resolved.notion.database_id.as_deref(), Some("account"));
+        assert_eq!(resolved.notion_database_id, "account");
     }
 
     #[test]
@@ -268,22 +261,19 @@ mod tests {
         app.shared.notion_database_id = Some("shared".to_owned());
         let config = Config::from_app(PathBuf::from("config.toml"), app).unwrap();
         let resolved = config.account("user@example.com").unwrap();
-        assert_eq!(resolved.notion.database_id.as_deref(), Some("shared"));
+        assert_eq!(resolved.notion_database_id, "shared");
     }
 
     #[test]
-    fn account_folders_override_shared_folders() {
+    fn account_image_folder_overrides_shared_image_folder() {
         let mut app = app_with("user@example.com");
-        app.shared.history_folder = Some("shared-history".to_owned());
         app.shared.image_folder = Some("shared-images".to_owned());
         {
             let account = app.accounts.get_mut("user@example.com").unwrap();
-            account.history_folder = Some("account-history".to_owned());
             account.image_folder = Some("account-images".to_owned());
         }
         let config = Config::from_app(PathBuf::from("config.toml"), app).unwrap();
         let resolved = config.account("user@example.com").unwrap();
-        assert_eq!(resolved.history_folder.as_deref(), Some("account-history"));
         assert_eq!(resolved.image_folder.as_deref(), Some("account-images"));
     }
 }

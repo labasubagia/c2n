@@ -14,7 +14,6 @@ use crate::adapters::filesystem::Filesystem;
 use crate::adapters::notion::NotionClient;
 use crate::adapters::sqlite::{GenerationStore, SqliteStore};
 use crate::config::Config;
-use crate::domain::models::RequiredVar;
 use crate::services::account_status::{ActivityRow, get_account_activity_statuses};
 use crate::services::sync::{SyncOptions, sync};
 use crate::shared::time::resolve_timezone;
@@ -275,21 +274,7 @@ async fn run_accounts(args: RunArgs, reporter: &Reporter) -> Result<()> {
     for (index, account_name) in target_accounts.iter().enumerate() {
         let resolved = config.account(account_name)?;
 
-        let configured_db_id = resolved.notion.database_id.clone();
-        let Some(db_id) = configured_db_id else {
-            bail!("db_id must be provided");
-        };
-        validate_db_id(&db_id)?;
-
-        let required = vec![
-            RequiredVar::ChatGptAuthorizationToken,
-            RequiredVar::ChatGptUserAgent,
-            RequiredVar::ChatGptCookie,
-            RequiredVar::NotionApiKey,
-            RequiredVar::NotionDatabaseId,
-        ];
-        resolved.validate_runtime(&required)?;
-
+        let db_id = resolved.notion_database_id.clone();
         let conversation_delay = args
             .conversation_delay
             .or(resolved.conversation_delay)
@@ -437,11 +422,6 @@ async fn run_delete_library(args: DeleteLibraryArgs) -> Result<()> {
 
     for account in target_accounts {
         let resolved = config.account(&account)?;
-        resolved.validate_runtime(&[
-            RequiredVar::ChatGptAuthorizationToken,
-            RequiredVar::ChatGptUserAgent,
-            RequiredVar::ChatGptCookie,
-        ])?;
         let chatgpt = ChatGptClient::new(resolved.provider_context()?)?;
 
         if !args.yes {
@@ -474,12 +454,6 @@ fn validate_sync_args(args: &SyncArgs) -> Result<()> {
     }
     if args.all && !(args.from_history || args.verify_history) {
         bail!("--all only applies with --from-history or --verify-history");
-    }
-    Ok(())
-}
-fn validate_db_id(db_id: &str) -> Result<()> {
-    if db_id.trim().len() < 10 {
-        bail!("Notion database ID must be a valid ID");
     }
     Ok(())
 }
@@ -608,11 +582,5 @@ mod tests {
         args.all = true;
         args.from_history = true;
         assert!(validate_sync_args(&args).is_ok());
-    }
-
-    #[test]
-    fn rejects_short_database_ids() {
-        assert!(validate_db_id("short").is_err());
-        assert!(validate_db_id("0123456789abcdef").is_ok());
     }
 }

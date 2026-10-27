@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue};
+use reqwest::header::{CONTENT_TYPE, HeaderMap};
 use reqwest::{Client, Method, StatusCode};
 use serde_json::{Value, json};
 
@@ -23,12 +23,6 @@ pub enum NotionError {
     Request(#[from] reqwest::Error),
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("invalid HTTP header {name}: {source}")]
-    InvalidHeader {
-        name: String,
-        #[source]
-        source: reqwest::header::InvalidHeaderValue,
-    },
     #[error("file not found: {0}")]
     FileNotFound(String),
     #[error("Notion file upload response is missing an id")]
@@ -56,8 +50,6 @@ pub trait NotionApi: Send + Sync {
 pub struct NotionClient {
     http: Client,
     headers: HeaderMap,
-    authorization: String,
-    notion_version: String,
     account_name: String,
     cache: Arc<dyn NotionCache>,
     base_url: String,
@@ -83,24 +75,9 @@ impl NotionClient {
         cache: Arc<dyn NotionCache>,
         base_url: impl Into<String>,
     ) -> Result<Self, NotionError> {
-        let authorization = context
-            .headers
-            .get(AUTHORIZATION)
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or_default()
-            .to_owned();
-        let notion_version = context
-            .headers
-            .get("notion-version")
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or("2025-09-03")
-            .to_owned();
-
         Ok(Self {
             http: build_client()?,
             headers: context.headers,
-            authorization,
-            notion_version,
             account_name: context.account_name,
             cache,
             base_url: base_url.into().trim_end_matches('/').to_owned(),
@@ -248,7 +225,8 @@ impl NotionClient {
             .ok_or_else(|| NotionError::InvalidPath(file_path.display().to_string()))?
             .to_owned();
         let url = format!("{}/v1/file_uploads/{}/send", self.base_url, file_upload_id);
-        let headers = self.upload_headers()?;
+        let mut headers = self.headers.clone();
+        headers.remove(CONTENT_TYPE);
 
         retry_http(|| async {
             let part = reqwest::multipart::Part::file(file_path)
@@ -280,29 +258,6 @@ impl NotionClient {
         })
         .await
         .map_err(NotionError::from)
-    }
-
-    fn upload_headers(&self) -> Result<HeaderMap, NotionError> {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            AUTHORIZATION,
-            HeaderValue::from_str(&self.authorization).map_err(|source| {
-                NotionError::InvalidHeader {
-                    name: "Authorization".to_owned(),
-                    source,
-                }
-            })?,
-        );
-        headers.insert(
-            HeaderName::from_static("notion-version"),
-            HeaderValue::from_str(&self.notion_version).map_err(|source| {
-                NotionError::InvalidHeader {
-                    name: "Notion-Version".to_owned(),
-                    source,
-                }
-            })?,
-        );
-        Ok(headers)
     }
 }
 

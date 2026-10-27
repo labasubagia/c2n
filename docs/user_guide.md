@@ -173,8 +173,8 @@ authorization_token = "eyJhbGciOiJSUzI1_other..."
 
 - `[shared]` values are fallbacks.
 - Per-account `user_agent`, `cookie_string_base64`, `notion_database_id`,
-  `history_folder`, `image_folder`, and `conversation_delay` override the shared
-  values. Blank per-account strings fall back to the shared value.
+  `image_folder`, and `conversation_delay` override the shared values. Blank
+  per-account strings fall back to the shared value.
 - `notion.api_key` is required for `sync`.
 - `notion.database_id` is required for `sync`; a per-account or `[shared]`
   `notion_database_id` supplies it.

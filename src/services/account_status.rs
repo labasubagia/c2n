@@ -178,6 +178,10 @@ mod tests {
 
     fn config(account: &str) -> Config {
         let mut app = AppConfig::default();
+        app.shared.user_agent = Some("shared-agent".to_owned());
+        app.shared.cookie_string_base64 = Some("shared-cookie".to_owned());
+        app.notion.api_key = Some("key".to_owned());
+        app.notion.database_id = Some("db".to_owned());
         app.accounts.insert(
             account.to_owned(),
             AccountConfig {
@@ -185,7 +189,6 @@ mod tests {
                 user_agent: None,
                 cookie_string_base64: None,
                 notion_database_id: None,
-                history_folder: None,
                 image_folder: None,
                 conversation_delay: None,
             },

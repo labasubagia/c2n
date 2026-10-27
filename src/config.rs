@@ -149,16 +149,6 @@ fn resolve_account(
         return Err(ConfigError::MissingRequired(missing.join(", ")));
     }
 
-    let history_folder = account
-        .history_folder
-        .clone()
-        .filter(|value| !value.trim().is_empty())
-        .or_else(|| {
-            shared
-                .history_folder
-                .clone()
-                .filter(|value| !value.trim().is_empty())
-        });
     let image_folder = account
         .image_folder
         .clone()
@@ -179,7 +169,6 @@ fn resolve_account(
         notion_api_key: notion_api_key.unwrap(),
         notion_version: notion.version.clone(),
         notion_database_id: notion_database_id.unwrap(),
-        history_folder,
         image_folder,
         conversation_delay,
     })
@@ -208,7 +197,6 @@ mod tests {
                 user_agent: Some("agent".to_owned()),
                 cookie_string_base64: Some("cookie".to_owned()),
                 notion_database_id: None,
-                history_folder: None,
                 image_folder: None,
                 conversation_delay: None,
             },
@@ -239,20 +227,17 @@ mod tests {
         let mut app = app_with("user@example.com");
         app.shared.user_agent = Some("shared-agent".to_owned());
         app.shared.cookie_string_base64 = Some("shared-cookie".to_owned());
-        app.shared.history_folder = Some("shared-history".to_owned());
         app.shared.image_folder = Some("shared-images".to_owned());
         {
             let account = app.accounts.get_mut("user@example.com").unwrap();
             account.user_agent = Some("   ".to_owned());
             account.cookie_string_base64 = Some(String::new());
-            account.history_folder = Some(String::new());
             account.image_folder = Some("  ".to_owned());
         }
         let config = Config::from_app(PathBuf::from("config.toml"), app).unwrap();
         let resolved = config.account("user@example.com").unwrap();
         assert_eq!(resolved.user_agent, "shared-agent");
         assert_eq!(resolved.cookie_string_base64, "shared-cookie");
-        assert_eq!(resolved.history_folder.as_deref(), Some("shared-history"));
         assert_eq!(resolved.image_folder.as_deref(), Some("shared-images"));
     }
 
@@ -280,18 +265,15 @@ mod tests {
     }
 
     #[test]
-    fn account_folders_override_shared_folders() {
+    fn account_image_folder_overrides_shared_image_folder() {
         let mut app = app_with("user@example.com");
-        app.shared.history_folder = Some("shared-history".to_owned());
         app.shared.image_folder = Some("shared-images".to_owned());
         {
             let account = app.accounts.get_mut("user@example.com").unwrap();
-            account.history_folder = Some("account-history".to_owned());
             account.image_folder = Some("account-images".to_owned());
         }
         let config = Config::from_app(PathBuf::from("config.toml"), app).unwrap();
         let resolved = config.account("user@example.com").unwrap();
-        assert_eq!(resolved.history_folder.as_deref(), Some("account-history"));
         assert_eq!(resolved.image_folder.as_deref(), Some("account-images"));
     }
 }

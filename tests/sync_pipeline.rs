@@ -181,7 +181,6 @@ fn test_context() -> TestContext {
             user_agent: Some("agent".to_owned()),
             cookie_string_base64: Some("Y29va2ll".to_owned()),
             notion_database_id: None,
-            history_folder: None,
             image_folder: None,
             conversation_delay: None,
         },

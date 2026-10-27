@@ -9,7 +9,6 @@ cookie_string_base64 = "b2FpLWRpZD0..."
 
 # Optional global overrides:
 # notion_database_id = "your_default_database_id"
-# history_folder = "~/data/chatgpt/image_history"
 # image_folder = "~/Pictures/chatgpt"
 # conversation_delay = 2.0
 
@@ -29,7 +28,6 @@ authorization_token = "eyJhbGciOi..."
 # notion_database_id = "optional_account_specific_database_id"
 # user_agent = "Mozilla/5.0 ..."
 # cookie_string_base64 = "cGVyLWFjY291bnQtY29va2ll..."
-# history_folder = "~/my_chatgpt/history"
 # image_folder = "~/my_chatgpt/images"
 # conversation_delay = 2.0
 

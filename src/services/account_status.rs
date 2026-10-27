@@ -189,7 +189,6 @@ mod tests {
                 user_agent: None,
                 cookie_string_base64: None,
                 notion_database_id: None,
-                history_folder: None,
                 image_folder: None,
                 conversation_delay: None,
             },

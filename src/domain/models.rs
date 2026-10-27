@@ -72,8 +72,6 @@ pub struct SharedConfig {
     #[serde(default)]
     pub notion_database_id: Option<String>,
     #[serde(default)]
-    pub history_folder: Option<String>,
-    #[serde(default)]
     pub image_folder: Option<String>,
     #[serde(default)]
     pub conversation_delay: Option<f64>,
@@ -90,8 +88,6 @@ pub struct AccountConfig {
     pub cookie_string_base64: Option<String>,
     #[serde(default)]
     pub notion_database_id: Option<String>,
-    #[serde(default)]
-    pub history_folder: Option<String>,
     #[serde(default)]
     pub image_folder: Option<String>,
     #[serde(default)]
@@ -120,7 +116,6 @@ pub struct ResolvedConfig {
     pub notion_api_key: String,
     pub notion_version: String,
     pub notion_database_id: String,
-    pub history_folder: Option<String>,
     pub image_folder: Option<String>,
     pub conversation_delay: Option<f64>,
 }

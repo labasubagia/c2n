@@ -311,8 +311,9 @@ Output columns:
 
 ### 4.3 `img clear`
 
-Removes downloaded images and other temporary entries under `output/` while
-preserving:
+Removes downloaded images under `output/images/`. Other entries in `output/`
+— including the database, WAL/SHM/journal files, and `.gitkeep` — are
+preserved, as is the `images/` folder itself.
 
 - `output/chatgpt.db`
 - `output/chatgpt.db-wal`

@@ -323,9 +323,8 @@ Accounts without any data render `-` in all four timestamp columns.
 
 ### 4.4 Maintenance Commands
 
-- **`img clear`**: dry-runs by default; with `--yes`, removes entries under
-  `output/` except the database, `chatgpt.db-wal`, `chatgpt.db-shm`,
-  `chatgpt.db-journal`, and `.gitkeep`.
+- **`img clear`**: dry-runs by default; with `--yes`, removes everything inside
+  `output/images/`, preserving the folder itself and any other output entries.
 - **`db backup <TARGET>`**: uses `rusqlite::backup::Backup` to produce a
   consistent snapshot. Parent directories are created.
 - **`db restore <SOURCE>`**: dry-runs by default; with `--yes`, uses the SQLite
@@ -370,7 +369,8 @@ Accounts without any data render `-` in all four timestamp columns.
   into memory.
 - PNG metadata edits parse only chunk headers and write through a temporary
   file.
-- `img clear` preserves the database and WAL/SHM/journal files.
+- `img clear` only touches the images folder; the database and WAL/SHM/journal
+  files under `output/` are untouched.
 
 ### 5.4 Path Safety
 

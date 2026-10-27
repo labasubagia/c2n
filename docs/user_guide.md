@@ -225,8 +225,12 @@ Options:
   it is verified uploaded. Ignored with `--no-upload-to-notion` and in history
   replay modes.
 - `--delete-library`: After upload, delete library images matching
-  `delete_library_queries` from the config.
-- `--delete-library-all`: After upload, delete all library images.
+  `delete_library_queries` from the config. Without `--yes`, this only counts
+  and reports the matching images.
+- `--delete-library-all`: After upload, delete all library images. Without
+  `--yes`, this only counts and reports them.
+- `--yes`: Confirm upload-time library deletion. Required for both
+  `--delete-library` and `--delete-library-all` to actually delete anything.
 - `--check-notion-api`: Accepted for CLI compatibility; remote checks are
   enabled by default.
 - `--no-check-notion-api`: Trust the local `uploaded_at` marker and skip remote
@@ -272,6 +276,12 @@ c2n upload-to-notion --verify-history --all
 
 # Hide conversations only after verified uploads
 c2n upload-to-notion --delete-conversation
+
+# Preview upload-time library deletion (dry run)
+c2n upload-to-notion --delete-library
+
+# Actually delete configured library queries after upload
+c2n upload-to-notion --delete-library --yes
 
 # Log failures for later inspection
 c2n upload-to-notion --fail-log output/failures.jsonl
@@ -349,11 +359,15 @@ c2n delete-library [QUERY] [OPTIONS]
 
 Arguments and options:
 
-- `QUERY`: Optional search query. Omit to target all images.
+- `QUERY`: Optional search query. Omit to target all images. A blank query is
+  rejected; use no query when you intentionally want all images.
 - `--account <EMAIL>`: Process one account. Defaults to all accounts.
 - `--max-concurrent <INT>`: Concurrent delete requests. Default `10`.
 - `--yes`: Actually delete. Without this flag, the command only counts matching
   images and exits.
+
+Actual deletion shows a live progress indicator with the number of images
+deleted so far.
 
 Examples:
 

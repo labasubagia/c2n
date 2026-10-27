@@ -165,7 +165,7 @@ impl NotionClient {
                 .json(&json!({
                     "filter": {
                         "and": [
-                            {"property": "Name", "rich_text": {"equals": query}}
+                            {"property": "Name", "title": {"equals": query}}
                         ]
                     }
                 }))

@@ -307,4 +307,19 @@ async fn deduplicates_by_page_title_and_caches_data_sources() {
         .filter(|request| request.url.path() == database_path.as_str())
         .count();
     assert_eq!(database_requests, 1, "data sources should be cached");
+
+    let query_request = requests
+        .iter()
+        .find(|request| request.url.path() == "/v1/data_sources/ds1/query")
+        .expect("data source query request");
+    let query_body: Value = serde_json::from_slice(&query_request.body).unwrap();
+    assert_eq!(query_body["filter"]["and"][0]["property"], "Name");
+    assert_eq!(
+        query_body["filter"]["and"][0]["title"]["equals"],
+        "image.png"
+    );
+    assert!(
+        query_body["filter"]["and"][0].get("rich_text").is_none(),
+        "title properties must use a title filter"
+    );
 }

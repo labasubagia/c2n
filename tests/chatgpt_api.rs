@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue, USER_AGENT};
 use serde_json::json;
-use wiremock::matchers::{method, path, query_param};
+use wiremock::matchers::{method, path, query_param, query_param_is_missing};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use c2n::adapters::chatgpt::{ChatGptApi, ChatGptClient, DeleteConversationResult};
@@ -125,6 +125,7 @@ async fn paginates_and_deletes_library_images() {
     Mock::given(method("GET"))
         .and(path("/files/library/nodes"))
         .and(query_param("categories", "image"))
+        .and(query_param_is_missing("cursor"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "items": [
                 {
@@ -136,7 +137,7 @@ async fn paginates_and_deletes_library_images() {
             ],
             "cursor": "next"
         })))
-        .up_to_n_times(1)
+        .up_to_n_times(2)
         .mount(&server)
         .await;
     Mock::given(method("GET"))

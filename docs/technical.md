@@ -127,7 +127,8 @@ checks. Expired rows are deleted lazily.
 2. When `--no-upload-to-notion` is active, rows are never marked uploaded.
 3. A conversation is hidden only when every image in it is in the uploaded or
    already-uploaded state.
-4. Library deletion is explicit: the standalone command requires `--yes`.
+4. Library deletion is explicit: both the standalone command and upload-time
+   cleanup require `--yes`.
 5. All timestamps written by the tool are UTC RFC 3339 strings. Local time is
    used only for display and date-boundary calculations.
 
@@ -351,7 +352,13 @@ is marked ready, matching the original tool's behavior.
   the database file underneath open handles.
 - **`delete-library [QUERY]`**: dry-runs by default and prints a count. With
   `--yes`, deletes matching images concurrently and prints the remaining count.
-  Deletes use the ChatGPT `delete_stream` endpoint and parse SSE `data:` events.
+  A blank query is rejected instead of being treated as “all images”. Deletes
+  use the ChatGPT `delete_stream` endpoint, parse SSE `data:` events, and show a
+  live progress indicator.
+- **Upload-time library cleanup** (`upload-to-notion --delete-library` or
+  `--delete-library-all`): also dry-runs unless `--yes` is supplied. In dry-run
+  mode it counts matching images without deleting them. Blank configured
+  queries are ignored, and an empty query list is reported as a warning.
 
 ---
 
@@ -393,7 +400,8 @@ is marked ready, matching the original tool's behavior.
 - The output root is `<current working directory>/output`.
 - Relative CLI and configured image folders are resolved under the output root.
 - `..` components that would escape the output root are rejected.
-- Symlinks inside the output root are resolved and rejected if they escape it.
+- Symlinks inside the output root are resolved and rejected if they escape it,
+  including dangling symlinks whose target does not exist yet.
 - Downloaded filenames sanitize API-provided IDs so they cannot contain path
   separators.
 - Absolute paths are allowed for explicit `--image-folder` values and configured

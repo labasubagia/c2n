@@ -30,6 +30,7 @@ pub struct UploadOptions {
     pub delete_conversation: bool,
     pub delete_library: bool,
     pub delete_library_all: bool,
+    pub confirm_delete_library: bool,
     pub check_notion_api: bool,
     pub from_history: bool,
     pub include_uploaded: bool,
@@ -414,6 +415,37 @@ async fn cleanup_library(
     }
 
     let remove_all = options.delete_library_all || resolved.remove_all_library_images;
+    let queries: Vec<&str> = resolved
+        .delete_library_queries
+        .iter()
+        .map(|query| query.trim())
+        .filter(|query| !query.is_empty())
+        .collect();
+    if !remove_all && queries.is_empty() {
+        reporter
+            .warn("library deletion was requested, but no delete_library_queries are configured");
+        return Ok(());
+    }
+
+    if !options.confirm_delete_library {
+        if remove_all {
+            let count = chatgpt.count_library_images().await?;
+            reporter.println(format!(
+                "[{}] Dry run: {count} library image(s) would be deleted. Pass --yes to delete.",
+                options.account
+            ));
+        } else {
+            for query in queries {
+                let count = chatgpt.count_library_images_by_query(Some(query)).await?;
+                reporter.println(format!(
+                    "[{}] Dry run: {count} library image(s) would be deleted matching '{query}'. Pass --yes to delete.",
+                    options.account
+                ));
+            }
+        }
+        return Ok(());
+    }
+
     if remove_all {
         let deleted = chatgpt
             .delete_library_images_by_query(None, 10, reporter)
@@ -422,7 +454,7 @@ async fn cleanup_library(
         return Ok(());
     }
 
-    for query in &resolved.delete_library_queries {
+    for query in queries {
         let deleted = chatgpt
             .delete_library_images_by_query(Some(query), 10, reporter)
             .await?;

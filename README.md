@@ -20,8 +20,8 @@ the useful CLI surface and safety properties while using typed Rust APIs,
   exponential backoff and `Retry-After` support.
 - Optionally hide processed ChatGPT conversations with a fail-safe verification
   step.
-- Optionally remove images from the ChatGPT library, with a dry-run default for
-  the standalone `delete-library` command.
+- Optionally remove images from the ChatGPT library, with dry-run defaults for
+  both the standalone `delete-library` command and upload-time library cleanup.
 - Back up and restore the SQLite database with the SQLite backup API.
 
 ## Requirements
@@ -145,16 +145,28 @@ Hide conversations after every image in them is verified uploaded:
 c2n upload-to-notion --delete-conversation
 ```
 
-Delete configured library queries after upload:
+Preview configured library-query deletion after upload:
 
 ```bash
 c2n upload-to-notion --delete-library
 ```
 
-Delete the entire ChatGPT image library after upload:
+Delete configured library queries after upload:
+
+```bash
+c2n upload-to-notion --delete-library --yes
+```
+
+Preview deletion of the entire ChatGPT image library after upload:
 
 ```bash
 c2n upload-to-notion --delete-library-all
+```
+
+Delete the entire ChatGPT image library after upload:
+
+```bash
+c2n upload-to-notion --delete-library-all --yes
 ```
 
 Check account cooldowns:
@@ -219,9 +231,12 @@ c2n delete-library --yes          # all library images
 - `delete-library` is a dry run unless `--yes` is supplied.
 - `--max-concurrent` controls concurrent delete requests (default 10).
 - `upload-to-notion --delete-library` uses `delete_library_queries` from the
-  config. `--delete-library-all` removes every library image.
+  config. `--delete-library-all` targets every library image.
+- Upload-time library cleanup is also a dry run unless `--yes` is supplied.
 - `remove_all_library_images = true` makes `--delete-library` behave like
   `--delete-library-all`.
+- Blank configured queries are ignored; delete all images explicitly with
+  `--delete-library-all` or `remove_all_library_images = true`.
 
 ### Prompt metadata
 

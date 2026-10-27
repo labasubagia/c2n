@@ -239,7 +239,6 @@ fn options() -> SyncOptions {
     SyncOptions {
         account: ACCOUNT.to_owned(),
         db_id: DB_ID.to_owned(),
-        image_folder: None,
         delete_conversation: true,
         delete_library: false,
         delete_library_all: false,
@@ -309,7 +308,7 @@ async fn library_deletion_runs_with_yes() {
 fn image_path(context: &TestContext) -> PathBuf {
     context
         .filesystem
-        .resolve_image_folder(None, None)
+        .resolve_image_folder(None)
         .unwrap()
         .join("img1.png")
 }

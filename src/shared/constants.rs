@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
+use directories::ProjectDirs;
 use url::Url;
 
 pub const MAX_HTTP_ATTEMPTS: usize = 10;
@@ -10,9 +11,48 @@ pub const MIN_RETRY_DELAY_SECONDS: u64 = 2;
 pub const MAX_RETRY_DELAY_SECONDS: u64 = 60;
 pub const OUTPUT_PATH: &str = "output";
 pub const DB_FILE_NAME: &str = "chatgpt.db";
-pub const DEFAULT_CONFIG_PATH: &str = "config.toml";
+pub const CONFIG_FILE_NAME: &str = "config.toml";
 pub const CHATGPT_BASE_URL: &str = "https://chatgpt.com/backend-api";
 pub const NOTION_BASE_URL: &str = "https://api.notion.com";
+
+const CONFIG_DIR_ENV: &str = "C2N_CONFIG_DIR";
+const DATA_DIR_ENV: &str = "C2N_DATA_DIR";
+
+fn project_dirs() -> Option<ProjectDirs> {
+    ProjectDirs::from("", "", "c2n")
+}
+
+/// Configuration directory: `$C2N_CONFIG_DIR`, else the platform config dir.
+pub fn config_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var(CONFIG_DIR_ENV) {
+        return PathBuf::from(dir);
+    }
+    project_dirs()
+        .map(|dirs| dirs.config_dir().to_path_buf())
+        .unwrap_or_else(|| PathBuf::from(OUTPUT_PATH))
+}
+
+/// Data directory: `$C2N_DATA_DIR`, else the platform data dir.
+pub fn data_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var(DATA_DIR_ENV) {
+        return PathBuf::from(dir);
+    }
+    project_dirs()
+        .map(|dirs| dirs.data_dir().to_path_buf())
+        .unwrap_or_else(|| PathBuf::from(OUTPUT_PATH))
+}
+
+pub fn config_path() -> PathBuf {
+    config_dir().join(CONFIG_FILE_NAME)
+}
+
+/// Create the config, data, and default image directories if they are absent.
+pub fn ensure_dirs() -> std::io::Result<()> {
+    std::fs::create_dir_all(config_dir())?;
+    std::fs::create_dir_all(data_dir())?;
+    std::fs::create_dir_all(data_dir().join("images"))?;
+    Ok(())
+}
 
 const IMAGE_EXTENSIONS: &[&str] = &[".png", ".jpg", ".jpeg", ".gif", ".webp"];
 

@@ -67,3 +67,20 @@ fn old_commands_are_rejected() {
         .failure()
         .stderr(predicate::str::contains("unrecognized subcommand"));
 }
+
+#[test]
+fn creates_config_data_and_image_dirs() {
+    let temp = tempfile::tempdir().unwrap();
+    let cfg = temp.path().join("cfg");
+    let data = temp.path().join("data");
+    Command::cargo_bin("c2n")
+        .unwrap()
+        .env("C2N_CONFIG_DIR", &cfg)
+        .env("C2N_DATA_DIR", &data)
+        .args(["account-status"])
+        .assert()
+        .failure();
+    assert!(cfg.is_dir());
+    assert!(data.is_dir());
+    assert!(data.join("images").is_dir());
+}

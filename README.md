@@ -10,7 +10,7 @@ the useful CLI surface and safety properties while using typed Rust APIs,
 ## Features
 
 - Sync recent ChatGPT image generations for one or more accounts.
-- Store image generations in a local SQLite database (`output/chatgpt.db`).
+- Store image generations in a local SQLite database (platform data dir).
 - Embed the prompt in PNG `tEXt`/`iTXt` metadata without rewriting files that
   already contain the correct prompt.
 - Upload images to Notion as native file uploads and create one page per image.
@@ -81,8 +81,6 @@ authorization_token = "eyJhbGciOi..."
 - The global `[shared]` values are fallbacks. Per-account values override them.
 - `notion.database_id` is the default. `[shared].notion_database_id` can provide
   a shared fallback, and a per-account `notion_database_id` overrides both.
-- `--config <PATH>` selects a different configuration file.
-
 See [docs/user_guide.md](docs/user_guide.md) for step-by-step instructions on
 creating the Notion integration and harvesting browser credentials.
 
@@ -190,12 +188,19 @@ c2n delete-library --yes          # all library images
 
 ## Behavior and safety notes
 
-### Local state
+### Configuration and local state
 
-- The SQLite database lives at `output/chatgpt.db`.
-- Images default to `output/images/`.
-- A relative `--image-folder` is resolved under `output/`; absolute paths are
-  allowed.
+- Config defaults to the platform config dir (`~/.config/c2n/config.toml` on
+  Linux; `~/Library/Application Support/c2n/` on macOS;
+  `%APPDATA%\c2n\` on Windows).
+- The SQLite database and images default to the platform data dir
+  (`~/.local/share/c2n/` on Linux; the config dir on macOS/Windows).
+- Development overrides: `C2N_CONFIG_DIR` and `C2N_DATA_DIR` (env wins). Example:
+  `C2N_CONFIG_DIR=./ C2N_DATA_DIR=./output c2n sync`.
+  Both values are relative to the current working directory.
+- Produced files: `config.toml` (your input configuration), `chatgpt.db`
+  (SQLite state: downloaded generations, `uploaded_at`, data sources, history),
+  and `images/` (downloaded image files, prompts embedded in PNG metadata).
 - `uploaded_at` is only written after a successful Notion page creation, or
   after a remote Notion check confirms the page already exists.
 - `--check-notion-api` is accepted for CLI compatibility; remote checks are
@@ -257,8 +262,6 @@ c2n delete-library --yes          # all library images
   shortcut for `--from-history --check-notion-api` in intent.
 - `--all` removes the 3-day history window and requires `--from-history` or
   `--verify-history`.
-- `--history-folder` is accepted for compatibility, but SQLite is the source of
-  truth.
 - `--timezone` is accepted for compatibility. `account-status` uses it for date
   boundaries; history filtering uses absolute time.
 

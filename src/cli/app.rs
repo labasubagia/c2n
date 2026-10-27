@@ -34,42 +34,56 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Sync image generations to Notion.
-    #[command(name = "sync")]
     Sync(SyncArgs),
 
-    /// Show which accounts are ready to generate new data.
-    #[command(name = "account-status")]
-    AccountStatus(AccountStatusArgs),
+    /// Show per-account readiness to generate new images.
+    Status(AccountStatusArgs),
 
+    /// Manage local output files.
+    #[command(subcommand)]
+    Img(ImgCommand),
+
+    /// Manage the local SQLite database.
+    #[command(subcommand)]
+    Db(DbCommand),
+
+    /// Manage the ChatGPT library.
+    #[command(subcommand)]
+    Library(LibraryCommand),
+}
+
+#[derive(Debug, Subcommand)]
+#[command(arg_required_else_help = true)]
+pub enum ImgCommand {
     /// Clean the output directory, preserving the database.
-    #[command(name = "clean-output-path")]
-    CleanOutputPath,
+    Clear,
+}
 
+#[derive(Debug, Subcommand)]
+#[command(arg_required_else_help = true)]
+pub enum DbCommand {
     /// Copy the local SQLite database to TARGET.
-    #[command(name = "backup-db")]
-    BackupDb {
+    Backup {
         /// Destination path for the backup file.
         target: PathBuf,
     },
 
     /// Overwrite the local SQLite database with SOURCE.
-    #[command(name = "restore-db")]
-    RestoreDb {
+    Restore {
         /// Path to the backup file to restore from.
         source: PathBuf,
     },
+}
 
+#[derive(Debug, Subcommand)]
+#[command(arg_required_else_help = true)]
+pub enum LibraryCommand {
     /// Remove images from the ChatGPT library, optionally filtered by query.
-    #[command(name = "delete-library")]
-    DeleteLibrary(DeleteLibraryArgs),
+    Delete(DeleteLibraryArgs),
 }
 
 #[derive(Debug, Args)]
 pub struct SyncArgs {
-    /// Notion database ID (overrides the configured database).
-    #[arg(long)]
-    pub db_id: Option<String>,
-
     /// Hide conversations in ChatGPT after all their images are verified uploaded.
     #[arg(long)]
     pub delete_conversation: bool,
@@ -160,17 +174,34 @@ pub async fn run(cli: Cli) -> Result<()> {
 
     match command {
         Command::Sync(args) => run_sync(args).await,
-        Command::AccountStatus(args) => run_account_status(args),
-        Command::CleanOutputPath => run_clean_output(),
-        Command::BackupDb { target } => run_backup(&target),
-        Command::RestoreDb { source } => run_restore(&source),
-        Command::DeleteLibrary(args) => run_delete_library(args).await,
+        Command::Status(args) => run_account_status(args),
+        Command::Img(cmd) => run_img(cmd),
+        Command::Db(cmd) => run_db(cmd),
+        Command::Library(cmd) => run_library(cmd).await,
+    }
+}
+
+fn run_img(cmd: ImgCommand) -> Result<()> {
+    match cmd {
+        ImgCommand::Clear => run_clean_output(),
+    }
+}
+
+fn run_db(cmd: DbCommand) -> Result<()> {
+    match cmd {
+        DbCommand::Backup { target } => run_backup(&target),
+        DbCommand::Restore { source } => run_restore(&source),
+    }
+}
+
+async fn run_library(cmd: LibraryCommand) -> Result<()> {
+    match cmd {
+        LibraryCommand::Delete(args) => run_delete_library(args).await,
     }
 }
 
 #[derive(Debug)]
 struct RunArgs {
-    db_id: Option<String>,
     delete_conversation: bool,
     check_notion_api: bool,
     from_history: bool,
@@ -191,7 +222,6 @@ async fn run_sync(args: SyncArgs) -> Result<()> {
     let from_history = args.from_history || args.verify_history;
     run_accounts(
         RunArgs {
-            db_id: args.db_id,
             delete_conversation: args.delete_conversation,
             check_notion_api: args.check_notion_api
                 || !args.no_check_notion_api
@@ -245,24 +275,19 @@ async fn run_accounts(args: RunArgs, reporter: &Reporter) -> Result<()> {
     for (index, account_name) in target_accounts.iter().enumerate() {
         let resolved = config.account(account_name)?;
 
-        let configured_db_id = args
-            .db_id
-            .clone()
-            .or_else(|| resolved.notion.database_id.clone());
+        let configured_db_id = resolved.notion.database_id.clone();
         let Some(db_id) = configured_db_id else {
             bail!("db_id must be provided");
         };
         validate_db_id(&db_id)?;
 
-        let mut required = vec![
+        let required = vec![
             RequiredVar::ChatGptAuthorizationToken,
             RequiredVar::ChatGptUserAgent,
             RequiredVar::ChatGptCookie,
             RequiredVar::NotionApiKey,
+            RequiredVar::NotionDatabaseId,
         ];
-        if args.db_id.is_none() {
-            required.push(RequiredVar::NotionDatabaseId);
-        }
         resolved.validate_runtime(&required)?;
 
         let conversation_delay = args
@@ -545,7 +570,6 @@ mod tests {
 
     fn sync_args() -> SyncArgs {
         SyncArgs {
-            db_id: None,
             delete_conversation: false,
             check_notion_api: false,
             no_check_notion_api: false,

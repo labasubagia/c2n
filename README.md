@@ -21,7 +21,7 @@ the useful CLI surface and safety properties while using typed Rust APIs,
 - Optionally hide processed ChatGPT conversations with a fail-safe verification
   step.
 - Optionally remove images from the ChatGPT library, with dry-run defaults for
-  both the standalone `delete-library` command and post-run library cleanup.
+  both the standalone `library delete` command and post-run library cleanup.
 - Back up and restore the SQLite database with the SQLite backup API.
 
 ## Requirements
@@ -136,40 +136,40 @@ c2n sync --delete-conversation
 Delete library images matching a query (dry run without `--yes`):
 
 ```bash
-c2n delete-library "old prompt"
+c2n library delete "old prompt"
 ```
 
 Delete all library images (dry run without `--yes`):
 
 ```bash
-c2n delete-library
+c2n library delete
 ```
 
 Check account cooldowns:
 
 ```bash
-c2n account-status --timezone Asia/Singapore
+c2n status --timezone Asia/Singapore
 ```
 
 Clean the output directory while preserving the database:
 
 ```bash
-c2n clean-output-path
+c2n img clear
 ```
 
 Back up and restore the database:
 
 ```bash
-c2n backup-db ./backups/chatgpt.db
-c2n restore-db ./backups/chatgpt.db
+c2n db backup ./backups/chatgpt.db
+c2n db restore ./backups/chatgpt.db
 ```
 
 Dry-run a library deletion, then actually delete:
 
 ```bash
-c2n delete-library "old prompt"
-c2n delete-library "old prompt" --yes
-c2n delete-library --yes          # all library images
+c2n library delete "old prompt"
+c2n library delete "old prompt" --yes
+c2n library delete --yes          # all library images
 ```
 
 ## Behavior and safety notes
@@ -210,7 +210,7 @@ c2n delete-library --yes          # all library images
 
 ### Library deletion
 
-- `delete-library` is a dry run unless `--yes` is supplied.
+- `library delete` is a dry run unless `--yes` is supplied.
 - `--max-concurrent` controls concurrent delete requests (default 10).
 
 ### Prompt metadata
@@ -241,7 +241,7 @@ c2n delete-library --yes          # all library images
   shortcut for `--from-history --check-notion-api` in intent.
 - `--all` removes the 3-day history window and requires `--from-history` or
   `--verify-history`.
-- `--timezone` is accepted for compatibility. `account-status` uses it for date
+- `--timezone` is accepted for compatibility. `status` uses it for date
   boundaries; history filtering uses absolute time.
 
 ## Development

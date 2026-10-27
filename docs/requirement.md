@@ -184,7 +184,7 @@ The product scope is divided into these functional pillars:
 
 ### 5.6 Library Maintenance
 
-- Provide `delete-library [QUERY]` to remove images from the ChatGPT library.
+- Provide `library delete [QUERY]` to remove images from the ChatGPT library.
 - The standalone command is a dry run by default and requires `--yes` for actual
   deletion.
 - A blank query must be rejected rather than treated as “all images”.
@@ -192,11 +192,11 @@ The product scope is divided into these functional pillars:
 
 ### 5.7 Database Maintenance
 
-- Provide `backup-db <TARGET>` using the SQLite backup API for a consistent
+- Provide `db backup <TARGET>` using the SQLite backup API for a consistent
   snapshot even while other processes write to the database.
-- Provide `restore-db <SOURCE>` using the SQLite backup API into the live
+- Provide `db restore <SOURCE>` using the SQLite backup API into the live
   connection rather than replacing the database file underneath open handles.
-- Provide `clean-output-path` to remove temporary assets while preserving the
+- Provide `img clear` to remove temporary assets while preserving the
   database, WAL/SHM/journal files, and `.gitkeep`.
 
 ---

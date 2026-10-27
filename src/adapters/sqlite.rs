@@ -55,6 +55,8 @@ pub enum StoreError {
     LockPoisoned,
     #[error("backup file not found: {0}")]
     BackupNotFound(String),
+    #[error("invalid database backup: {0}")]
+    InvalidBackup(String),
 }
 
 #[derive(Debug, Clone, Default)]
@@ -390,10 +392,13 @@ impl GenerationStore for SqliteStore {
             return Ok(self.path.clone());
         }
 
+        let source_connection =
+            Connection::open_with_flags(source, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        validate_backup(&source_connection, source)?;
+
         let mut destination = self.conn()?;
-        let source = Connection::open(source)?;
         {
-            let backup = Backup::new(&source, &mut destination)?;
+            let backup = Backup::new(&source_connection, &mut destination)?;
             backup.run_to_completion(5, Duration::from_millis(50), None)?;
         }
         destination.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
@@ -477,6 +482,39 @@ impl NotionCache for SqliteStore {
 
 fn placeholders(count: usize) -> String {
     vec!["?"; count].join(",")
+}
+
+fn validate_backup(connection: &Connection, path: &Path) -> Result<(), StoreError> {
+    let integrity: String = connection.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
+    if integrity != "ok" {
+        return Err(StoreError::InvalidBackup(format!(
+            "{} failed SQLite integrity check: {integrity}",
+            path.display()
+        )));
+    }
+
+    let has_generations: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'image_generations')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !has_generations {
+        return Err(StoreError::InvalidBackup(format!(
+            "{} does not contain an image_generations table",
+            path.display()
+        )));
+    }
+    connection
+        .prepare(
+            "SELECT id, created_at, conversation_id, message_id, asset_pointer, url, prompt, uploaded_at, account FROM image_generations LIMIT 0",
+        )
+        .map_err(|error| {
+            StoreError::InvalidBackup(format!(
+                "{} has an incompatible image_generations table: {error}",
+                path.display()
+            ))
+        })?;
+    Ok(())
 }
 
 fn same_file(left: &Path, right: &Path) -> bool {
@@ -666,6 +704,33 @@ mod tests {
             .unwrap();
         assert_eq!(restored.len(), 1);
         assert_eq!(restored[0].id, "a");
+
+        let invalid = temp.path().join("empty.db");
+        Connection::open(&invalid).unwrap();
+        assert!(matches!(
+            store.restore(&invalid),
+            Err(StoreError::InvalidBackup(_))
+        ));
+        let incompatible = temp.path().join("incompatible.db");
+        Connection::open(&incompatible)
+            .unwrap()
+            .execute_batch("CREATE TABLE image_generations (id TEXT PRIMARY KEY);")
+            .unwrap();
+        assert!(matches!(
+            store.restore(&incompatible),
+            Err(StoreError::InvalidBackup(_))
+        ));
+        let unchanged = store
+            .get_generations(
+                "user@example.com",
+                &GetGenerationsOptions {
+                    include_uploaded: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(unchanged.len(), 1);
+        assert_eq!(unchanged[0].id, "a");
 
         let missing = temp.path().join("missing.db");
         assert!(matches!(

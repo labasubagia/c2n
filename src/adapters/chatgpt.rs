@@ -227,6 +227,8 @@ impl ChatGptApi for ChatGptClient {
             .filter(|parent| !parent.as_os_str().is_empty())
             .unwrap_or_else(|| Path::new("."));
         std::fs::create_dir_all(parent)?;
+        let destination_target = crate::adapters::filesystem::SafeFileTarget::open(destination)
+            .map_err(|error| HttpError::Io(std::io::Error::other(error.to_string())))?;
 
         let mut headers = self.headers.clone();
         let download_origin = Url::parse(url).ok().map(|url| url.origin());
@@ -241,17 +243,15 @@ impl ChatGptApi for ChatGptClient {
             let response = self.http.get(url).headers(headers.clone()).send().await?;
             let mut response = ensure_success(response, Method::GET).await?;
 
-            let mut temporary = tempfile::Builder::new()
-                .prefix(".c2n-")
-                .suffix(".tmp")
-                .tempfile_in(parent)?;
+            let mut temporary = destination_target
+                .create_temp()
+                .map_err(|error| HttpError::Io(std::io::Error::other(error.to_string())))?;
             while let Some(chunk) = response.chunk().await? {
-                std::io::Write::write_all(&mut temporary, &chunk)?;
+                std::io::Write::write_all(temporary.file_mut(), &chunk)?;
             }
-            temporary.as_file_mut().sync_all()?;
-            temporary
-                .persist(destination)
-                .map_err(|error| HttpError::Io(error.error))?;
+            destination_target
+                .replace(temporary)
+                .map_err(|error| HttpError::Io(std::io::Error::other(error.to_string())))?;
             Ok(())
         })
         .await

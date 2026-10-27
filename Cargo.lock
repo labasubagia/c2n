@@ -224,6 +224,7 @@ dependencies = [
  "iana-time-zone",
  "img-parts",
  "indicatif",
+ "libc",
  "mime_guess",
  "predicates",
  "reqwest",

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use base64::Engine as _;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue};
 use serde_json::{Value, json};
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{body_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use c2n::adapters::notion::{NotionApi, NotionClient};
@@ -202,10 +202,39 @@ async fn reconciles_an_ambiguous_page_creation_error() {
         .await;
     Mock::given(method("POST"))
         .and(path("/v1/data_sources/ds1/query"))
+        .and(body_json(json!({
+            "filter": {
+                "and": [{"property": "Name", "title": {"equals": "image.png"}}]
+            }
+        })))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "results": [{
-                "properties": {"Name": {"title": [{"text": {"content": "image.png"}}]}}
-            }]
+                "properties": {"Name": {"title": [{"plain_text": "other.png"}]}}
+            }],
+            "has_more": true,
+            "next_cursor": "page-2"
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/data_sources/ds1/query"))
+        .and(body_json(json!({
+            "filter": {
+                "and": [{"property": "Name", "title": {"equals": "image.png"}}]
+            },
+            "start_cursor": "page-2"
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "results": [{
+                "properties": {
+                    "Name": {"title": [
+                        {"plain_text": "image"},
+                        {"text": {"content": ".png"}}
+                    ]}
+                }
+            }],
+            "has_more": false,
+            "next_cursor": null
         })))
         .mount(&server)
         .await;
@@ -242,6 +271,13 @@ async fn reconciles_an_ambiguous_page_creation_error() {
             .count(),
         1
     );
+    let queries: Vec<Value> = requests
+        .iter()
+        .filter(|request| request.url.path() == "/v1/data_sources/ds1/query")
+        .map(|request| serde_json::from_slice(&request.body).unwrap())
+        .collect();
+    assert_eq!(queries.len(), 2, "reconciliation should traverse all pages");
+    assert_eq!(queries[1]["start_cursor"], "page-2");
 }
 
 #[tokio::test]
@@ -286,7 +322,9 @@ async fn deduplicates_by_page_title_and_caches_data_sources() {
                         "title": [{"text": {"content": "image.png"}}]
                     }
                 }
-            }]
+            }],
+            "has_more": false,
+            "next_cursor": null
         })))
         .mount(&server)
         .await;

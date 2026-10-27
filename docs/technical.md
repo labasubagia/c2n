@@ -310,24 +310,13 @@ is discarded and refreshed.
 1. Resolve the requested IANA timezone, then fall back to the system timezone and
    finally UTC.
 2. For each account, check whether any generations exist in SQLite.
-   - No rows: the account is immediately `Ready`.
-3. For today and yesterday:
-   - Compute UTC bounds for the local calendar day.
-   - `cooldown_threshold = now - 24h`.
-   - Count total rows in the day and “active” rows created after the threshold.
-4. Status:
-   - `active_count == 0`: `Ready`.
-   - `active_count == total`: `❌ (x/y to wait)`.
-   - Otherwise: `⚠️ (x/y to wait)`.
-5. Durations:
-   - **Next Wait** = earliest active generation + 24h, displayed in local time.
-   - **Next Cooldown** = next wait − now.
-   - **Fully Ready In** = latest active generation + 24h − now.
-   - **Total Wait** = latest active − earliest active.
+   - No rows: all four timestamp columns render `-`.
+3. For yesterday and today, compute UTC bounds for the local calendar day and
+   fetch the first/last image timestamps for that day.
+4. One table per account lists `First Img Yesterday`, `Last Img Yesterday`,
+   `First Img Today`, and `Last Img Today`, in local time.
 
-Accounts without any data appear as ready in both tables. Accounts with data
-but no activity on a given day appear only in the yesterday fallback row, which
-is marked ready, matching the original tool's behavior.
+Accounts without any data render `-` in all four timestamp columns.
 
 ### 4.4 Maintenance Commands
 

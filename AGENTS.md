@@ -69,3 +69,4 @@ CI runs the four commands above in that order. Do not use `cargo test` alone as 
 - **Do not merge any pull request without explicit permission from the user.** Creating or updating a PR is not permission to merge it.
 - The required `PR Template Compliance` check enforces `.github/PULL_REQUEST_TEMPLATE.md`: use the exact headings `### Summary`, `### Changes Made`, and `### Testing`, replace all placeholder text, and check at least one `- [x]` testing item. Do not paste test logs into the PR body.
 - The `CI` workflow runs formatting, clippy, tests, and a release build; make it pass before merging.
+- Releases must update `CHANGELOG.md` (Keep a Changelog format) and bump the `version` in `Cargo.toml` in the same release commit; the changelog heading must match the tag version.

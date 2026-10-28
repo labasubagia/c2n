@@ -11,7 +11,6 @@ use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 
 use crate::domain::models::{ActivityStats, ChatGptImageGeneration, DataSource};
-use crate::shared::constants::db_path;
 use crate::shared::time::{TimeError, now_utc_iso, parse_utc, utc_iso};
 
 const SCHEMA: &str = r#"
@@ -134,10 +133,6 @@ impl SqliteStore {
             path,
             connection: Mutex::new(connection),
         })
-    }
-
-    pub fn open_default() -> Result<Self, StoreError> {
-        Self::open(db_path())
     }
 
     pub fn path(&self) -> &Path {

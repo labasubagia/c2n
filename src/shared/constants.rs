@@ -72,11 +72,6 @@ pub fn image_ext_from_url(url: &str) -> String {
         .unwrap_or_else(|| ".png".to_owned())
 }
 
-/// Default database path, relative to the current working directory.
-pub fn db_path() -> PathBuf {
-    PathBuf::from(OUTPUT_PATH).join(DB_FILE_NAME)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
